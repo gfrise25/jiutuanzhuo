@@ -144,6 +144,7 @@ function TablePage() {
     menu: [] as { id: number; name: string; price: number }[],
     total: 0,
     people: 0,
+    portions: 0,
     isHost: false,
     peopleList: [] as { person_name: string; amount: number }[],
   });
@@ -153,6 +154,7 @@ function TablePage() {
     menu: (menu.data ?? []).map((m) => ({ id: m.id, name: m.name, price: m.price })),
     total,
     people,
+    portions,
     isHost,
     peopleList,
   };
@@ -199,6 +201,7 @@ function TablePage() {
             })),
             total: s.total,
             people_count: s.people,
+            portions: s.portions,
           };
         },
       }),
@@ -209,7 +212,7 @@ function TablePage() {
         registerWebMcpTool({
           name: "add_order",
           description:
-            "替一位參加者在這一桌加點。item_id 請先用 get_table_status 取得。參數：person_name（參加者名字）、items（[{item_id, qty}]）、note（備註，可省略）。",
+            "替一位參加者在這一桌加點。item_id 對應 get_table_status 回傳的菜單品項。參數：person_name（參加者名字）、items（[{item_id, qty}]）、note（備註，可省略）。成功後直接建立 Agent 代點訂單。",
           inputSchema: {
             type: "object",
             properties: {
@@ -219,17 +222,20 @@ function TablePage() {
                 items: {
                   type: "object",
                   properties: {
-                    item_id: { type: "number" },
-                    qty: { type: "number" },
+                    item_id: { type: "integer", minimum: 1 },
+                    qty: { type: "integer", minimum: 1 },
                   },
                   required: ["item_id", "qty"],
+                  additionalProperties: false,
                 },
+                minItems: 1,
               },
               note: { type: "string" },
             },
             required: ["person_name", "items"],
             additionalProperties: false,
           },
+          annotations: { readOnlyHint: false, idempotentHint: false },
           execute: async (raw) => {
             const args = (raw ?? {}) as {
               person_name?: string;
@@ -237,12 +243,21 @@ function TablePage() {
               note?: string;
             };
             const personName = (args.person_name ?? "").trim();
-            const items = (args.items ?? []).filter(
-              (i) => i && Number.isFinite(i.item_id) && Number.isFinite(i.qty) && i.qty > 0,
-            );
-            if (!personName || items.length === 0) {
+            if (!personName || !Array.isArray(args.items) || args.items.length === 0) {
               return { ok: false, error: "缺少 person_name 或 items" };
             }
+            const invalidItems = args.items.filter(
+              (i) =>
+                !i ||
+                !Number.isInteger(i.item_id) ||
+                !Number.isInteger(i.qty) ||
+                i.item_id < 1 ||
+                i.qty < 1,
+            );
+            if (invalidItems.length > 0) {
+              return { ok: false, error: "item_id 與 qty 必須是大於 0 的整數" };
+            }
+            const items = args.items;
             const s = live.current;
             if (s.menu.length === 0) {
               return { ok: false, error: "菜單尚未載入，請稍後再試" };
@@ -267,6 +282,8 @@ function TablePage() {
               return {
                 ok: true,
                 amount: (result as { amount?: number }).amount ?? null,
+                items: items.map((item) => ({ item_id: item.item_id, qty: item.qty })),
+                via_agent: true,
                 user_content: { person_name: personName, note: args.note ?? "" },
               };
             } catch (e) {
