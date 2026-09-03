@@ -374,8 +374,55 @@ function TablePage() {
           }),
         );
       }
-
+    } else if (isHost) {
+      // 結單後：只留唯讀工具 + 桌主可以沿用設定再開一桌（舊桌紀錄保留）
+      disposers.push(
+        registerWebMcpTool({
+          name: "reopen_table",
+          description:
+            "在這一桌已結單的狀態下，沿用同樣的桌名、桌主與取餐方式另外開一桌新的，原本這桌的訂單紀錄不會變動。參數：hours（新桌幾小時後截止，1 到 72，預設 2）。",
+          inputSchema: {
+            type: "object",
+            properties: { hours: { type: "number" } },
+            additionalProperties: false,
+          },
+          execute: async (raw) => {
+            const args = (raw ?? {}) as { hours?: number };
+            const hours =
+              Number.isFinite(args.hours) && (args.hours as number) > 0
+                ? Math.min(args.hours as number, 72)
+                : 2;
+            const s = live.current;
+            const ok = await askRef.current("要沿用這桌的設定再開一桌嗎？", [
+              `桌名：${s.info?.name ?? ""}（會自動加上團次）`,
+              `取餐方式：${s.info?.pickup ?? ""}`,
+              `截止時間：${hours} 小時後`,
+              "這桌的訂單紀錄會完整保留",
+            ]);
+            if (!ok) return { ok: false, error: "使用者取消" };
+            try {
+              const next = await reopenTable({ sourceTableId: tableId, hours });
+              navigate({ to: "/t/$tableId", params: { tableId: next.id } });
+              return {
+                ok: true,
+                table_id: next.id,
+                deadline: next.deadline,
+                pickup: next.pickup,
+                share_url:
+                  typeof window !== "undefined"
+                    ? `${window.location.origin}/t/${next.id}/join`
+                    : null,
+                previous_table_id: tableId,
+                user_content: { table_name: next.name },
+              };
+            } catch (e) {
+              return { ok: false, error: e instanceof Error ? e.message : "再開一桌失敗" };
+            }
+          },
+        }),
+      );
     }
+
 
     return () => {
       disposers.forEach((d) => d?.());
