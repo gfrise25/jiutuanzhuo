@@ -14,7 +14,7 @@ The obvious fix is to let an agent do it. The obvious failure mode is letting th
 
 ## The approach
 
-JiuTuanZhuo is a normal web app that also declares tools to any agent in the page via `navigator.modelContext` (WebMCP). The agent does not scrape the DOM or simulate clicks. It calls the same operations the UI calls, hits the same server-side rules, and every write is attributed.
+JiuTuanZhuo is a normal web app that also declares tools to any agent in the page via `document.modelContext`（相容舊版 `navigator.modelContext`） (WebMCP). The agent does not scrape the DOM or simulate clicks. It calls the same operations the UI calls, hits the same server-side rules, and every write is attributed.
 
 Three principles the codebase actually follows:
 
@@ -29,7 +29,7 @@ Three principles the codebase actually follows:
 ```
 Browser page
 ├── UI (TanStack Start + React)
-└── navigator.modelContext  ──┐
+└── document.modelContext   ──┐
                               ├──► supabase-js (anon key, RLS enforced)
                               │         │
                               │         ▼
@@ -96,7 +96,7 @@ Written down because an agent-callable surface deserves an explicit threat model
 
 ## Stack
 
-TanStack Start · React · TypeScript · Tailwind CSS · shadcn/ui · Supabase (Postgres, Auth, Realtime) · WebMCP via `navigator.modelContext`
+TanStack Start · React · TypeScript · Tailwind CSS · shadcn/ui · Supabase (Postgres, Auth, Realtime) · WebMCP via `document.modelContext`（相容舊版 `navigator.modelContext`）
 
 Scaffolded and iterated with [Lovable](https://lovable.dev).
 
