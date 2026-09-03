@@ -1,0 +1,1 @@
+UPDATE menu_items SET name='蚵仔麵線', price=70 WHERE id=1; UPDATE menu_items SET name='大腸麵線', price=60 WHERE id=3; UPDATE menu_items SET name='綜合麵線', price=60 WHERE id=5; UPDATE menu_items SET name='碳烤香腸', price=45 WHERE id=6; UPDATE menu_items SET active=false WHERE id IN (2,4);
