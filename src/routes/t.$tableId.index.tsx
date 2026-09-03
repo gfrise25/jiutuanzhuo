@@ -646,16 +646,16 @@ function TablePage() {
                   </li>
                   <li>
                     <b>close_table</b>
-                    {isHost && !closed ? "" : "（僅桌主且未結單時註冊）"}：把這桌結單，無參數。
+                    ：把這桌結單，無參數（執行時檢查桌主身分，並跳確認框）。
                   </li>
                   <li>
                     <b>cleanup_test_orders</b>
-                    {isHost && !closed ? "" : "（僅桌主且未結單時註冊）"}：刪除本桌由 Agent
+                    （僅開發環境註冊，正式站不提供）：刪除本桌由 Agent
                     代點且名字含關鍵字的測試訂單，參數 keyword、reason，會保留稽核紀錄。
                   </li>
                   <li>
                     <b>reopen_table</b>
-                    {isHost && closed ? "" : "（僅桌主且已結單時註冊）"}：沿用桌名、桌主與取餐方式
+                    ：已結單後由桌主沿用桌名、桌主與取餐方式
                     另外開一桌，參數 hours（幾小時後截止）。舊桌紀錄保留，新桌會自動註冊上面這些工具。
                   </li>
                 </ul>
