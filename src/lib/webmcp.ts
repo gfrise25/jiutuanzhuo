@@ -119,3 +119,15 @@ export function registerWebMcpTool(tool: ToolDescriptor): (() => void) | null {
     syncProvideContext();
   };
 }
+
+// 方便你在 Chrome DevTools 直接檢查：__jt.available()、__jt.tools()
+if (typeof window !== "undefined") {
+  (window as unknown as { __jt?: unknown }).__jt = {
+    available: isWebMcpAvailable,
+    tools: listRegisteredWebMcpTools,
+    raw: () =>
+      (document as unknown as { modelContext?: unknown }).modelContext ??
+      (navigator as unknown as { modelContext?: unknown }).modelContext ??
+      null,
+  };
+}
