@@ -96,7 +96,28 @@ function createPolyfill(): ModelContextLike {
   return polyfill;
 }
 
+function mirrorContext(mc: ModelContextLike) {
+  const define = (target: object) => {
+    try {
+      Object.defineProperty(target, "modelContext", {
+        value: mc,
+        configurable: true,
+        writable: true,
+      });
+    } catch (error) {
+      console.error("[揪團桌] 無法鏡射 modelContext", error);
+    }
+  };
+  if (typeof navigator !== "undefined" && !(navigator as { modelContext?: unknown }).modelContext) {
+    define(navigator);
+  }
+  if (typeof document !== "undefined" && !(document as { modelContext?: unknown }).modelContext) {
+    define(document);
+  }
+}
+
 let context: ModelContextLike | null = null;
+
 
 /** 確保 navigator.modelContext（與 document.modelContext）存在，回傳可用的 context */
 export function ensureModelContext(): ModelContextLike | null {
