@@ -14,7 +14,11 @@ import {
   type MenuItem,
   type TableInfo,
 } from "@/lib/group-order";
-import { isWebMcpAvailable, registerWebMcpTools } from "@/lib/webmcp";
+import {
+  isWebMcpAvailable,
+  registerWebMcpTools,
+  type ToolDescriptor,
+} from "@/lib/webmcp";
 
 export type JoinBridge = {
   getName: () => string;
@@ -121,7 +125,7 @@ export function registerJoinWebMcpTools() {
     return () => {};
   }
 
-  const tools = [
+  const tools: ToolDescriptor[] = [
     {
       name: "get_table",
       title: "查看這桌資訊",
