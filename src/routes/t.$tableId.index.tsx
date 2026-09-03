@@ -324,9 +324,9 @@ function TablePage() {
     );
   }
 
-  // 座位：自己看得到的訂單 + 其他人以匿名座位補齊
-  const ghostSeats = Math.max(0, people - new Set(orders.map((o) => o.person_name)).size);
-  const seatCount = orders.length + ghostSeats + (closed ? 0 : 1);
+  // 座位與明細都以 RPC 回傳的每人金額清單為唯一資料來源
+  const seatCount = peopleList.length + (closed ? 0 : 1);
+
 
   return (
     <section className="stage">
