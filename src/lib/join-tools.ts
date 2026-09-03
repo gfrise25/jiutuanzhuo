@@ -136,9 +136,8 @@ export function registerJoinWebMcpTools() {
   const tools: ToolDescriptor[] = [
     {
       name: "get_table",
-      title: "查看這桌資訊",
-      description:
-        "取得目前這一桌的資訊與完整菜單：桌名、桌主、狀態（收單中或已截止）、截止時間、取餐方式、tableId，以及每個品項的 id、名稱、單價。",
+      title: "這桌資訊",
+      description: "取得桌名、桌主、收單狀態、截止時間、tableId 與完整菜單（含 id、名稱、單價）。",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       execute: async () => {
@@ -159,8 +158,8 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "list_menu_items",
-      title: "查看菜單",
-      description: "列出可點的菜單品項，每項含 id、名稱、單價。",
+      title: "菜單",
+      description: "列出品項的 id、名稱、單價。",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true },
       execute: async () => {
@@ -170,9 +169,8 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "set_item_quantity",
-      title: "選用：預填品項數量",
-      description:
-        "選用工具：只更新品項數量（0-20），不會送單。submit_order 可一次帶完整品項，不需先呼叫本工具。可用 itemId 或 itemName 指定品項。",
+      title: "填數量",
+      description: "選用：只改品項數量（0-20），不送單。可用 itemId 或 itemName。",
       inputSchema: {
         type: "object",
         properties: {
@@ -209,9 +207,8 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "set_participant_name",
-      title: "選用：預填名字",
-      description:
-        "選用工具：只填入名字欄位，不會送單。submit_order 可直接帶 name。參數 name。",
+      title: "填名字",
+      description: "選用：只填名字欄位，不送單。submit_order 可直接帶 name。",
       inputSchema: {
         type: "object",
         properties: { name: { type: "string" } },
@@ -228,8 +225,8 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "set_note",
-      title: "選用：預填備註",
-      description: "選用工具：只填入備註欄位，不會送單。submit_order 可直接帶 note。參數 note。",
+      title: "填備註",
+      description: "選用：只填備註欄位，不送單。submit_order 可直接帶 note。",
       inputSchema: {
         type: "object",
         properties: { note: { type: "string" } },
@@ -245,8 +242,8 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "get_current_order",
-      title: "查看目前訂單",
-      description: "回傳目前表單狀態：名字、各品項數量、備註、小計金額。",
+      title: "目前訂單",
+      description: "回傳表單現況：名字、各品項數量、備註、小計。",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       execute: async () => {
@@ -256,9 +253,8 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "submit_order",
-      title: "立即送出 Agent 訂單",
-      description:
-        "單次完成 Agent 代點。參數為 name、items（每項含 itemId 或 itemName 與 quantity）及選填 note；呼叫後直接寫入資料庫，不顯示確認步驟，回傳資料庫計算的金額與 Agent 標記。",
+      title: "送出訂單",
+      description: "一步完成代點。帶 name 與 items（itemId 或 itemName ＋ quantity），note 選填。直接寫入資料庫並回傳金額。",
       inputSchema: {
         type: "object",
         properties: {
@@ -362,6 +358,11 @@ export function registerJoinWebMcpTools() {
   ]);
   tools.sort((a, b) => (priority.get(a.name) ?? 99) - (priority.get(b.name) ?? 99));
   const dispose = registerWebMcpTools(tools);
+
+  // 註冊完立刻預抓菜單與桌況（fire-and-forget），填入既有快取，
+  // 讓 agent 第一次呼叫工具時不必等首發 round trip。錯誤吞掉、不噴 console。
+  void ensureMenu().catch(() => {});
+  if (currentTableId()) void ensureTable().catch(() => {});
 
   disposed = dispose;
   return dispose;
