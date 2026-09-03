@@ -307,7 +307,69 @@ function TablePage() {
             },
           }),
         );
+
+        disposers.push(
+          registerWebMcpTool({
+            name: "cleanup_test_orders",
+            description:
+              "清理這一桌由 Agent 代點且名字含指定關鍵字的測試訂單，刪除前會保留稽核紀錄。參數：keyword（關鍵字，至少 2 個字，預設「測試」）、reason（清理原因，可省略）。單次最多 50 筆。",
+            inputSchema: {
+              type: "object",
+              properties: {
+                keyword: { type: "string" },
+                reason: { type: "string" },
+              },
+              additionalProperties: false,
+            },
+            execute: async (raw) => {
+              const args = (raw ?? {}) as { keyword?: string; reason?: string };
+              const keyword = (args.keyword ?? "測試").trim();
+              if (keyword.length < 2) {
+                return { ok: false, error: "關鍵字至少要 2 個字" };
+              }
+              const s = live.current;
+              const targets = s.orders.filter(
+                (o) => o.via_agent === true && o.person_name.includes(keyword),
+              );
+              if (targets.length === 0) {
+                return { ok: false, error: `沒有符合「${keyword}」的 Agent 測試訂單` };
+              }
+              const sum = targets.reduce((n, o) => n + o.amount, 0);
+              const ok = await askRef.current(
+                `要刪掉 ${targets.length} 筆測試訂單嗎？`,
+                [
+                  ...targets.slice(0, 8).map((o) => `${o.person_name} · ${twd(o.amount)}`),
+                  ...(targets.length > 8 ? [`⋯ 共 ${targets.length} 筆`] : []),
+                  "刪除會保留稽核紀錄，無法復原",
+                ],
+                twd(sum),
+              );
+              if (!ok) return { ok: false, error: "使用者取消" };
+              try {
+                const result = await purgeTestOrders({
+                  tableId,
+                  keyword,
+                  reason: args.reason ?? "WebMCP 測試資料清理",
+                });
+                qc.invalidateQueries({ queryKey: ["table", tableId] });
+                return {
+                  ok: true,
+                  deleted_count: result.deleted_count,
+                  keyword: result.keyword,
+                  deleted: result.deleted.map((d) => ({
+                    order_id: d.order_id,
+                    amount: d.amount,
+                    user_content: { person_name: d.person_name },
+                  })),
+                };
+              } catch (e) {
+                return { ok: false, error: e instanceof Error ? e.message : "清理失敗" };
+              }
+            },
+          }),
+        );
       }
+
     }
 
     return () => {
