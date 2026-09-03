@@ -79,7 +79,9 @@ function JoinPage() {
     applyQty(id, Math.max(0, Math.min(20, (qtyRef.current[id] ?? 0) + delta)));
   }
 
-  async function send(): Promise<{ ok: boolean; error?: string; amount?: number | undefined }> {
+  async function send(opts?: {
+    viaAgent?: boolean;
+  }): Promise<{ ok: boolean; error?: string; amount?: number | undefined }> {
     const items = Object.entries(qtyRef.current)
       .filter(([, v]) => v > 0)
       .map(([k, v]) => ({ item_id: Number(k), qty: v }));
@@ -98,6 +100,7 @@ function JoinPage() {
         name: nameRef.current.trim(),
         items,
         note: noteRef.current.trim(),
+        viaAgent: opts?.viaAgent === true,
       });
       toast.success("已加入這桌");
       navigate({ to: "/t/$tableId", params: { tableId } });
