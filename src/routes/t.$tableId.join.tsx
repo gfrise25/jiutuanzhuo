@@ -448,7 +448,7 @@ function JoinPage() {
             <br />
             <b>{twd(subtotal)}</b>
           </div>
-          <button className="btn chili" onClick={send} disabled={sending || closed}>
+          <button className="btn chili" onClick={() => void send()} disabled={sending || closed}>
             {closed ? "已結單" : sending ? "送出中…" : "送出，加入桌上"}
           </button>
         </div>
