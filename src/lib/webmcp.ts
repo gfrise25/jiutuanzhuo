@@ -8,6 +8,7 @@
 
 export type ToolDescriptor = {
   name: string;
+  title?: string;
   description: string;
   inputSchema: Record<string, unknown>;
   annotations?: Record<string, unknown>;
@@ -30,6 +31,7 @@ type ModelContextLike = {
 
 type WrappedTool = {
   name: string;
+  title?: string;
   description: string;
   inputSchema: Record<string, unknown>;
   annotations?: Record<string, unknown>;
@@ -79,6 +81,7 @@ function createPolyfill(): ModelContextLike {
     listTools() {
       return [...activeTools.values()].map((t) => ({
         name: t.name,
+        ...(t.title ? { title: t.title } : {}),
         description: t.description,
         inputSchema: t.inputSchema,
         ...(t.annotations ? { annotations: t.annotations } : {}),
@@ -140,8 +143,10 @@ export function hasNativeModelContext() {
 export function listRegisteredWebMcpTools() {
   return [...activeTools.values()].map((t) => ({
     name: t.name,
+    title: t.title ?? "",
     description: t.description,
     inputSchema: t.inputSchema,
+    annotations: t.annotations ?? null,
   }));
 }
 
@@ -164,6 +169,7 @@ export function registerWebMcpTool(tool: ToolDescriptor): (() => void) | null {
 
   const wrapped: WrappedTool = {
     name: tool.name,
+    ...(tool.title ? { title: tool.title } : {}),
     description: tool.description,
     inputSchema: tool.inputSchema,
     ...(tool.annotations ? { annotations: tool.annotations } : {}),
