@@ -113,3 +113,15 @@ Scaffolded and iterated with [Lovable](https://lovable.dev).
 所以這裡的做法是：頁面自己宣告工具，agent 呼叫的是 UI 呼叫的同一批函式，撞的是同一套伺服器端規則，每一筆寫入都標記來源。金額一律在 Postgres 算，`orders` 刻意不給 `INSERT` policy，寫入只能走 `add_order`。前端是介面，不是邊界。
 
 授權：MIT。
+
+## 在 Chrome 手動測 WebMCP
+
+```js
+const tools = await document.modelContext.getTools();
+tools.map(t => t.name);
+
+// executeTool 的第一個參數必須是 getTools() 回傳的 RegisteredTool 物件本身（不能傳名字字串），
+// 第二個參數必須是 JSON 字串（傳物件會噴 Failed to parse input arguments）。
+const t = tools.find(x => x.name === "get_table");
+await document.modelContext.executeTool(t, JSON.stringify({}));
+```
