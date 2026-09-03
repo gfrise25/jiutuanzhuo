@@ -207,9 +207,8 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "set_participant_name",
-      title: "選用：預填名字",
-      description:
-        "選用工具：只填入名字欄位，不會送單。submit_order 可直接帶 name。參數 name。",
+      title: "填名字",
+      description: "選用：只填名字欄位，不送單。submit_order 可直接帶 name。",
       inputSchema: {
         type: "object",
         properties: { name: { type: "string" } },
