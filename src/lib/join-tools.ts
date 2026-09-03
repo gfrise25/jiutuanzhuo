@@ -121,7 +121,7 @@ export function registerJoinWebMcpTools() {
     return () => {};
   }
 
-  const dispose = registerWebMcpTools([
+  const tools = [
     {
       name: "get_table",
       title: "查看這桌資訊",
@@ -158,7 +158,7 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "set_item_quantity",
-      title: "設定品項數量",
+      title: "選用：預填品項數量",
       description:
         "選用工具：只更新品項數量（0-20），不會送單。submit_order 可一次帶完整品項，不需先呼叫本工具。可用 itemId 或 itemName 指定品項。",
       inputSchema: {
@@ -197,7 +197,7 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "set_participant_name",
-      title: "填寫名字",
+      title: "選用：預填名字",
       description:
         "選用工具：只填入名字欄位，不會送單。submit_order 可直接帶 name。參數 name。",
       inputSchema: {
@@ -216,7 +216,7 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "set_note",
-      title: "填寫備註",
+      title: "選用：預填備註",
       description: "選用工具：只填入備註欄位，不會送單。submit_order 可直接帶 note。參數 note。",
       inputSchema: {
         type: "object",
@@ -244,9 +244,9 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "submit_order",
-      title: "送出訂單",
+      title: "立即送出 Agent 訂單",
       description:
-        "完整送單入口：一次帶 name、items（每項含 itemId 或 itemName 與 quantity）、note 即可完成送單，並標記為 Agent 代點。呼叫後立即寫入資料庫，不會再跳出任何確認步驟；未帶參數時送出目前表單內容。名字空白或總數量為 0 時回傳錯誤而不送出。",
+        "單次完成 Agent 代點。參數為 name、items（每項含 itemId 或 itemName 與 quantity）及選填 note；呼叫後直接寫入資料庫，不顯示確認步驟，回傳資料庫計算的金額與 Agent 標記。",
       inputSchema: {
         type: "object",
         properties: {
@@ -266,6 +266,7 @@ export function registerJoinWebMcpTools() {
             },
           },
         },
+        required: ["name", "items"],
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, idempotentHint: false, untrustedContentHint: true },
@@ -330,7 +331,21 @@ export function registerJoinWebMcpTools() {
         }
       },
     },
+  ];
+
+  // 原生 WebMCP 會把註冊順序交給 agent。把完整送單入口放在讀桌況之後，
+  // 避免 agent 先選到三個僅供同步畫面的預填工具而產生多輪往返。
+  const priority = new Map([
+    ["get_table", 0],
+    ["submit_order", 1],
+    ["list_menu_items", 2],
+    ["get_current_order", 3],
+    ["set_item_quantity", 4],
+    ["set_participant_name", 5],
+    ["set_note", 6],
   ]);
+  tools.sort((a, b) => (priority.get(a.name) ?? 99) - (priority.get(b.name) ?? 99));
+  const dispose = registerWebMcpTools(tools);
 
   disposed = dispose;
   return dispose;
