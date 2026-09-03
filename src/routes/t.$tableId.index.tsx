@@ -137,7 +137,7 @@ function TablePage() {
     return () => clearTimeout(t);
   }, [orders]);
 
-  // ── WebMCP 工具註冊 ─────────────────────────────
+  // ── WebMCP 工具註冊（mount 當下就註冊，不等資料） ──────
   const live = useRef({
     info: undefined as typeof info,
     orders: [] as OrderRow[],
@@ -146,6 +146,7 @@ function TablePage() {
     people: 0,
     portions: 0,
     isHost: false,
+    closed: false,
     peopleList: [] as { person_name: string; amount: number }[],
   });
   live.current = {
@@ -156,6 +157,7 @@ function TablePage() {
     people,
     portions,
     isHost,
+    closed,
     peopleList,
   };
 
@@ -165,36 +167,49 @@ function TablePage() {
   askRef.current = askConfirm;
 
   useEffect(() => {
-    if (!ready || !info) return;
     if (!isWebMcpAvailable()) {
       console.info("[揪團桌] 這個瀏覽器沒有 document.modelContext，略過 WebMCP 工具註冊。");
       return;
     }
+
+    /** 資料還沒到就等，最多 5 秒 */
+    async function waitForTable() {
+      const deadline = Date.now() + 5000;
+      while (!live.current.info && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return live.current.info;
+    }
+
+    async function currentMenu() {
+      if (live.current.menu.length > 0) return live.current.menu;
+      const fetched = await fetchMenu();
+      return fetched.map((item) => ({ id: item.id, name: item.name, price: item.price }));
+    }
+
+    const loading = { ok: false as const, error: "資料載入中，請稍後再試" };
+
     const disposers: Array<(() => void) | null> = [];
 
     disposers.push(
       registerWebMcpTool({
         name: "get_table_status",
+        title: "查看桌況",
         description:
           "讀取目前這一桌的資料：桌名、狀態、截止時間、菜單品項（id/名稱/價格）、每筆訂單（名字、品項、數量、小計、是否由 agent 代點）、整桌合計與人數。",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
-        annotations: { readOnlyHint: true },
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute: async () => {
+          if (!(await waitForTable())) return loading;
           const s = live.current;
-          const currentMenu = s.menu.length > 0
-            ? s.menu
-            : (await fetchMenu()).map((item) => ({
-                id: item.id,
-                name: item.name,
-                price: item.price,
-              }));
+          const menuList = await currentMenu();
           return {
             ok: true,
             status: s.info?.status ?? "unknown",
             deadline: s.info?.deadline ?? null,
             pickup: s.info?.pickup ?? null,
             user_content: { table_name: s.info?.name ?? "" },
-            menu: currentMenu,
+            menu: menuList,
             orders: s.orders.map((o) => ({
               items: (o.items ?? []).map((i) => ({ item_id: i.item_id, qty: i.qty })),
               amount: o.amount,
@@ -214,236 +229,247 @@ function TablePage() {
       }),
     );
 
-    if (!closed) {
+    disposers.push(
+      registerWebMcpTool({
+        name: "add_order",
+        title: "代點加入訂單",
+        description:
+          "替一位參加者在這一桌加點。item_id 對應 get_table_status 回傳的菜單品項。參數：person_name（參加者名字）、items（[{item_id, qty}]）、note（備註，可省略）。成功後直接建立 Agent 代點訂單。",
+        inputSchema: {
+          type: "object",
+          properties: {
+            person_name: { type: "string" },
+            items: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  item_id: { type: "integer", minimum: 1 },
+                  qty: { type: "integer", minimum: 1 },
+                },
+                required: ["item_id", "qty"],
+                additionalProperties: false,
+              },
+              minItems: 1,
+            },
+            note: { type: "string" },
+          },
+          required: ["person_name", "items"],
+          additionalProperties: false,
+        },
+        annotations: {
+          readOnlyHint: false,
+          idempotentHint: false,
+          untrustedContentHint: true,
+        },
+        execute: async (raw) => {
+          if (!(await waitForTable())) return loading;
+          if (live.current.closed) return { ok: false, error: "這桌已結單，無法加點" };
+          const args = (raw ?? {}) as {
+            person_name?: string;
+            items?: { item_id: number; qty: number }[];
+            note?: string;
+          };
+          const personName = (args.person_name ?? "").trim();
+          if (!personName || !Array.isArray(args.items) || args.items.length === 0) {
+            return { ok: false, error: "缺少 person_name 或 items" };
+          }
+          const invalidItems = args.items.filter(
+            (i) =>
+              !i ||
+              !Number.isInteger(i.item_id) ||
+              !Number.isInteger(i.qty) ||
+              i.item_id < 1 ||
+              i.qty < 1,
+          );
+          if (invalidItems.length > 0) {
+            return { ok: false, error: "item_id 與 qty 必須是大於 0 的整數" };
+          }
+          const items = args.items;
+          const menuList = await currentMenu();
+          const unknown = items.filter((i) => !menuList.some((m) => m.id === i.item_id));
+          if (unknown.length > 0) {
+            return {
+              ok: false,
+              error: `不存在的 item_id：${unknown.map((i) => i.item_id).join("、")}`,
+              menu: menuList,
+            };
+          }
+          try {
+            const result = await submitOrder({
+              tableId,
+              name: personName,
+              items,
+              note: args.note ?? "",
+              viaAgent: true,
+            });
+            qc.invalidateQueries({ queryKey: ["table", tableId] });
+            return {
+              ok: true,
+              amount: (result as { amount?: number }).amount ?? null,
+              items: items.map((item) => ({ item_id: item.item_id, qty: item.qty })),
+              via_agent: true,
+              user_content: { person_name: personName, note: args.note ?? "" },
+            };
+          } catch (e) {
+            return { ok: false, error: e instanceof Error ? e.message : "加點失敗" };
+          }
+        },
+      }),
+    );
+
+    disposers.push(
+      registerWebMcpTool({
+        name: "close_table",
+        title: "結單",
+        description: "把這一桌結單，結單後不能再加點。只有桌主可以執行。無參數。",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+        execute: async () => {
+          if (!(await waitForTable())) return loading;
+          const s = live.current;
+          if (!s.isHost) return { ok: false, error: "只有桌主可以結單" };
+          if (s.closed) return { ok: false, error: "這桌已經結單了" };
+          const ok = await askRef.current(
+            "確定要結單嗎？",
+            [`${s.people} 人`, "結單後就不能再加點"],
+            twd(s.total),
+          );
+          if (!ok) return { ok: false, error: "使用者取消" };
+          try {
+            await closeTable(tableId);
+            qc.invalidateQueries({ queryKey: ["table", tableId] });
+            return { ok: true, status: "closed", total: s.total, people_count: s.people };
+          } catch (e) {
+            return { ok: false, error: e instanceof Error ? e.message : "結單失敗" };
+          }
+        },
+      }),
+    );
+
+    disposers.push(
+      registerWebMcpTool({
+        name: "reopen_table",
+        title: "沿用設定再開一桌",
+        description:
+          "在這一桌已結單的狀態下，沿用同樣的桌名、桌主與取餐方式另外開一桌新的，原本這桌的訂單紀錄不會變動。只有桌主可以執行。參數：hours（新桌幾小時後截止，1 到 72，預設 2）。",
+        inputSchema: {
+          type: "object",
+          properties: { hours: { type: "number" } },
+          additionalProperties: false,
+        },
+        annotations: { readOnlyHint: false, idempotentHint: false, untrustedContentHint: true },
+        execute: async (raw) => {
+          if (!(await waitForTable())) return loading;
+          const s = live.current;
+          if (!s.isHost) return { ok: false, error: "只有桌主可以再開一桌" };
+          if (!s.closed) return { ok: false, error: "這桌還沒結單" };
+          const args = (raw ?? {}) as { hours?: number };
+          const hours =
+            Number.isFinite(args.hours) && (args.hours as number) > 0
+              ? Math.min(args.hours as number, 72)
+              : 2;
+          const ok = await askRef.current("要沿用這桌的設定再開一桌嗎？", [
+            `桌名：${s.info?.name ?? ""}（會自動加上團次）`,
+            `取餐方式：${s.info?.pickup ?? ""}`,
+            `截止時間：${hours} 小時後`,
+            "這桌的訂單紀錄會完整保留",
+          ]);
+          if (!ok) return { ok: false, error: "使用者取消" };
+          try {
+            const next = await reopenTable({ sourceTableId: tableId, hours });
+            navigate({ to: "/t/$tableId", params: { tableId: next.id } });
+            return {
+              ok: true,
+              table_id: next.id,
+              deadline: next.deadline,
+              pickup: next.pickup,
+              share_url:
+                typeof window !== "undefined"
+                  ? `${window.location.origin}/t/${next.id}/join`
+                  : null,
+              previous_table_id: tableId,
+              user_content: { table_name: next.name },
+            };
+          } catch (e) {
+            return { ok: false, error: e instanceof Error ? e.message : "再開一桌失敗" };
+          }
+        },
+      }),
+    );
+
+    // 破壞性的測試資料清理只在開發環境註冊，正式站不對外提供。
+    if (import.meta.env.DEV) {
       disposers.push(
         registerWebMcpTool({
-          name: "add_order",
+          name: "cleanup_test_orders",
+          title: "清理測試訂單（開發用）",
           description:
-            "替一位參加者在這一桌加點。item_id 對應 get_table_status 回傳的菜單品項。參數：person_name（參加者名字）、items（[{item_id, qty}]）、note（備註，可省略）。成功後直接建立 Agent 代點訂單。",
+            "清理這一桌由 Agent 代點且名字含指定關鍵字的測試訂單，刪除前會保留稽核紀錄。只有桌主可以執行。參數：keyword（關鍵字，至少 2 個字，預設「測試」）、reason（清理原因，可省略）。單次最多 50 筆。",
           inputSchema: {
             type: "object",
             properties: {
-              person_name: { type: "string" },
-              items: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    item_id: { type: "integer", minimum: 1 },
-                    qty: { type: "integer", minimum: 1 },
-                  },
-                  required: ["item_id", "qty"],
-                  additionalProperties: false,
-                },
-                minItems: 1,
-              },
-              note: { type: "string" },
+              keyword: { type: "string" },
+              reason: { type: "string" },
             },
-            required: ["person_name", "items"],
             additionalProperties: false,
           },
-          annotations: { readOnlyHint: false, idempotentHint: false },
+          annotations: { readOnlyHint: false, destructiveHint: true, untrustedContentHint: true },
           execute: async (raw) => {
-            const args = (raw ?? {}) as {
-              person_name?: string;
-              items?: { item_id: number; qty: number }[];
-              note?: string;
-            };
-            const personName = (args.person_name ?? "").trim();
-            if (!personName || !Array.isArray(args.items) || args.items.length === 0) {
-              return { ok: false, error: "缺少 person_name 或 items" };
-            }
-            const invalidItems = args.items.filter(
-              (i) =>
-                !i ||
-                !Number.isInteger(i.item_id) ||
-                !Number.isInteger(i.qty) ||
-                i.item_id < 1 ||
-                i.qty < 1,
-            );
-            if (invalidItems.length > 0) {
-              return { ok: false, error: "item_id 與 qty 必須是大於 0 的整數" };
-            }
-            const items = args.items;
+            if (!(await waitForTable())) return loading;
             const s = live.current;
-            const currentMenu = s.menu.length > 0
-              ? s.menu
-              : (await fetchMenu()).map((item) => ({
-                  id: item.id,
-                  name: item.name,
-                  price: item.price,
-                }));
-            const unknown = items.filter((i) => !currentMenu.some((m) => m.id === i.item_id));
-            if (unknown.length > 0) {
-              return {
-                ok: false,
-                error: `不存在的 item_id：${unknown.map((i) => i.item_id).join("、")}`,
-                menu: currentMenu,
-              };
+            if (!s.isHost) return { ok: false, error: "只有桌主可以清理訂單" };
+            if (s.closed) return { ok: false, error: "這桌已結單，無法清理" };
+            const args = (raw ?? {}) as { keyword?: string; reason?: string };
+            const keyword = (args.keyword ?? "測試").trim();
+            if (keyword.length < 2) return { ok: false, error: "關鍵字至少要 2 個字" };
+            const targets = s.orders.filter(
+              (o) => o.via_agent === true && o.person_name.includes(keyword),
+            );
+            if (targets.length === 0) {
+              return { ok: false, error: `沒有符合「${keyword}」的 Agent 測試訂單` };
             }
+            const sum = targets.reduce((n, o) => n + o.amount, 0);
+            const ok = await askRef.current(
+              `要刪掉 ${targets.length} 筆測試訂單嗎？`,
+              [
+                ...targets.slice(0, 8).map((o) => `${o.person_name} · ${twd(o.amount)}`),
+                ...(targets.length > 8 ? [`⋯ 共 ${targets.length} 筆`] : []),
+                "刪除會保留稽核紀錄，無法復原",
+              ],
+              twd(sum),
+            );
+            if (!ok) return { ok: false, error: "使用者取消" };
             try {
-              const result = await submitOrder({
+              const result = await purgeTestOrders({
                 tableId,
-                name: personName,
-                items,
-                note: args.note ?? "",
-                viaAgent: true,
+                keyword,
+                reason: args.reason ?? "WebMCP 測試資料清理",
               });
               qc.invalidateQueries({ queryKey: ["table", tableId] });
               return {
                 ok: true,
-                amount: (result as { amount?: number }).amount ?? null,
-                items: items.map((item) => ({ item_id: item.item_id, qty: item.qty })),
-                via_agent: true,
-                user_content: { person_name: personName, note: args.note ?? "" },
+                deleted_count: result.deleted_count,
+                keyword: result.keyword,
+                deleted: result.deleted.map((d) => ({
+                  order_id: d.order_id,
+                  amount: d.amount,
+                  user_content: { person_name: d.person_name },
+                })),
               };
             } catch (e) {
-              return { ok: false, error: e instanceof Error ? e.message : "加點失敗" };
-            }
-          },
-        }),
-      );
-
-      if (isHost) {
-        disposers.push(
-          registerWebMcpTool({
-            name: "close_table",
-            description: "把這一桌結單，結單後不能再加點。無參數。",
-            inputSchema: { type: "object", properties: {}, additionalProperties: false },
-            execute: async () => {
-              const s = live.current;
-              const ok = await askRef.current(
-                "確定要結單嗎？",
-                [`${s.people} 人`, "結單後就不能再加點"],
-                twd(s.total),
-              );
-              if (!ok) return { ok: false, error: "使用者取消" };
-              try {
-                await closeTable(tableId);
-                qc.invalidateQueries({ queryKey: ["table", tableId] });
-                return { ok: true, status: "closed", total: s.total, people_count: s.people };
-              } catch (e) {
-                return { ok: false, error: e instanceof Error ? e.message : "結單失敗" };
-              }
-            },
-          }),
-        );
-
-        disposers.push(
-          registerWebMcpTool({
-            name: "cleanup_test_orders",
-            description:
-              "清理這一桌由 Agent 代點且名字含指定關鍵字的測試訂單，刪除前會保留稽核紀錄。參數：keyword（關鍵字，至少 2 個字，預設「測試」）、reason（清理原因，可省略）。單次最多 50 筆。",
-            inputSchema: {
-              type: "object",
-              properties: {
-                keyword: { type: "string" },
-                reason: { type: "string" },
-              },
-              additionalProperties: false,
-            },
-            execute: async (raw) => {
-              const args = (raw ?? {}) as { keyword?: string; reason?: string };
-              const keyword = (args.keyword ?? "測試").trim();
-              if (keyword.length < 2) {
-                return { ok: false, error: "關鍵字至少要 2 個字" };
-              }
-              const s = live.current;
-              const targets = s.orders.filter(
-                (o) => o.via_agent === true && o.person_name.includes(keyword),
-              );
-              if (targets.length === 0) {
-                return { ok: false, error: `沒有符合「${keyword}」的 Agent 測試訂單` };
-              }
-              const sum = targets.reduce((n, o) => n + o.amount, 0);
-              const ok = await askRef.current(
-                `要刪掉 ${targets.length} 筆測試訂單嗎？`,
-                [
-                  ...targets.slice(0, 8).map((o) => `${o.person_name} · ${twd(o.amount)}`),
-                  ...(targets.length > 8 ? [`⋯ 共 ${targets.length} 筆`] : []),
-                  "刪除會保留稽核紀錄，無法復原",
-                ],
-                twd(sum),
-              );
-              if (!ok) return { ok: false, error: "使用者取消" };
-              try {
-                const result = await purgeTestOrders({
-                  tableId,
-                  keyword,
-                  reason: args.reason ?? "WebMCP 測試資料清理",
-                });
-                qc.invalidateQueries({ queryKey: ["table", tableId] });
-                return {
-                  ok: true,
-                  deleted_count: result.deleted_count,
-                  keyword: result.keyword,
-                  deleted: result.deleted.map((d) => ({
-                    order_id: d.order_id,
-                    amount: d.amount,
-                    user_content: { person_name: d.person_name },
-                  })),
-                };
-              } catch (e) {
-                return { ok: false, error: e instanceof Error ? e.message : "清理失敗" };
-              }
-            },
-          }),
-        );
-      }
-    } else if (isHost) {
-      // 結單後：只留唯讀工具 + 桌主可以沿用設定再開一桌（舊桌紀錄保留）
-      disposers.push(
-        registerWebMcpTool({
-          name: "reopen_table",
-          description:
-            "在這一桌已結單的狀態下，沿用同樣的桌名、桌主與取餐方式另外開一桌新的，原本這桌的訂單紀錄不會變動。參數：hours（新桌幾小時後截止，1 到 72，預設 2）。",
-          inputSchema: {
-            type: "object",
-            properties: { hours: { type: "number" } },
-            additionalProperties: false,
-          },
-          execute: async (raw) => {
-            const args = (raw ?? {}) as { hours?: number };
-            const hours =
-              Number.isFinite(args.hours) && (args.hours as number) > 0
-                ? Math.min(args.hours as number, 72)
-                : 2;
-            const s = live.current;
-            const ok = await askRef.current("要沿用這桌的設定再開一桌嗎？", [
-              `桌名：${s.info?.name ?? ""}（會自動加上團次）`,
-              `取餐方式：${s.info?.pickup ?? ""}`,
-              `截止時間：${hours} 小時後`,
-              "這桌的訂單紀錄會完整保留",
-            ]);
-            if (!ok) return { ok: false, error: "使用者取消" };
-            try {
-              const next = await reopenTable({ sourceTableId: tableId, hours });
-              navigate({ to: "/t/$tableId", params: { tableId: next.id } });
-              return {
-                ok: true,
-                table_id: next.id,
-                deadline: next.deadline,
-                pickup: next.pickup,
-                share_url:
-                  typeof window !== "undefined"
-                    ? `${window.location.origin}/t/${next.id}/join`
-                    : null,
-                previous_table_id: tableId,
-                user_content: { table_name: next.name },
-              };
-            } catch (e) {
-              return { ok: false, error: e instanceof Error ? e.message : "再開一桌失敗" };
+              return { ok: false, error: e instanceof Error ? e.message : "清理失敗" };
             }
           },
         }),
       );
     }
 
-
     return () => {
       disposers.forEach((d) => d?.());
     };
-  }, [ready, !!info, closed, isHost, tableId, qc, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableId]);
 
   const shareUrl =
     typeof window !== "undefined" ? `${window.location.origin}/t/${tableId}/join` : "";
