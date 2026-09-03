@@ -62,8 +62,14 @@ function JoinPage() {
     const items = Object.entries(qty)
       .filter(([, v]) => v > 0)
       .map(([k, v]) => ({ item_id: Number(k), qty: v }));
-    if (!name.trim()) return toast.error("請填你的名字");
-    if (items.length === 0) return toast.error("至少要點一樣東西");
+    if (!name.trim()) {
+      toast.error("請填你的名字");
+      return;
+    }
+    if (items.length === 0) {
+      toast.error("至少要點一樣東西");
+      return;
+    }
     setSending(true);
     try {
       await submitOrder({ tableId, name: name.trim(), items, note: note.trim() });
