@@ -116,6 +116,14 @@ function JoinPage() {
       return;
     }
 
+    async function waitForTable() {
+      const deadline = Date.now() + 5000;
+      while (!stateRef.current.info && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return stateRef.current.info;
+    }
+
     async function ensureMenu(): Promise<MenuItem[]> {
       if (stateRef.current.menu.length > 0) return stateRef.current.menu;
       return fetchMenu();
@@ -148,13 +156,14 @@ function JoinPage() {
     const dispose = registerWebMcpTools([
       {
         name: "get_table",
+        title: "查看這桌資訊",
         description:
           "取得這一桌的資訊：桌名、桌主、狀態（收單中或已截止）、截止時間、取餐方式、tableId。",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
-        annotations: { readOnlyHint: true },
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute: async () => {
-          const t = stateRef.current.info;
-          if (!t) return { ok: false, error: "桌況尚未載入" };
+          const t = await waitForTable();
+          if (!t) return { ok: false, error: "資料載入中，請稍後再試" };
           return {
             ok: true,
             table_id: t.id,
@@ -168,6 +177,7 @@ function JoinPage() {
       },
       {
         name: "list_menu_items",
+        title: "查看菜單",
         description: "列出這一桌可點的菜單品項，每項含 id、名稱、單價。",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         annotations: { readOnlyHint: true },
@@ -181,6 +191,7 @@ function JoinPage() {
       },
       {
         name: "set_item_quantity",
+        title: "設定品項數量",
         description:
           "設定某個品項的數量（0-20），畫面數字與小計會即時更新。可用 itemId 或 itemName 指定品項。",
         inputSchema: {
@@ -193,6 +204,7 @@ function JoinPage() {
           required: ["quantity"],
           additionalProperties: false,
         },
+        annotations: { readOnlyHint: false, idempotentHint: true },
         execute: async (raw) => {
           const args = (raw ?? {}) as { itemId?: number; itemName?: string; quantity?: number };
           if (stateRef.current.closed) return { ok: false, error: "這桌已結單，無法修改" };
@@ -220,6 +232,7 @@ function JoinPage() {
       },
       {
         name: "set_participant_name",
+        title: "填寫名字",
         description: "填入「你的名字」欄位。參數 name。",
         inputSchema: {
           type: "object",
@@ -227,6 +240,7 @@ function JoinPage() {
           required: ["name"],
           additionalProperties: false,
         },
+        annotations: { readOnlyHint: false, idempotentHint: true, untrustedContentHint: true },
         execute: async (raw) => {
           const value = String((raw as { name?: unknown } | null)?.name ?? "").trim();
           if (!value) return { ok: false, error: "name 不可以是空字串" };
@@ -237,6 +251,7 @@ function JoinPage() {
       },
       {
         name: "set_note",
+        title: "填寫備註",
         description: "填入備註欄位（例如「不要香菜」）。參數 note。",
         inputSchema: {
           type: "object",
@@ -244,6 +259,7 @@ function JoinPage() {
           required: ["note"],
           additionalProperties: false,
         },
+        annotations: { readOnlyHint: false, idempotentHint: true, untrustedContentHint: true },
         execute: async (raw) => {
           const value = String((raw as { note?: unknown } | null)?.note ?? "");
           setNote(value);
@@ -253,9 +269,10 @@ function JoinPage() {
       },
       {
         name: "get_current_order",
+        title: "查看目前訂單",
         description: "回傳目前表單狀態：名字、各品項數量、備註、小計金額。",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
-        annotations: { readOnlyHint: true },
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute: async () => {
           const list = await ensureMenu();
           return { ok: true, ...currentOrder(list) };
@@ -263,9 +280,11 @@ function JoinPage() {
       },
       {
         name: "submit_order",
+        title: "送出訂單",
         description:
           "送出這張訂單，等同按下「送出，加入桌上」。名字空白或所有數量為 0 時會回傳錯誤而不送出。",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: false, idempotentHint: false },
         execute: async () => {
           if (stateRef.current.closed) return { ok: false, error: "這桌已結單，無法送出" };
           if (!stateRef.current.name.trim()) return { ok: false, error: "請先填「你的名字」" };
