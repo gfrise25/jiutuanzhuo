@@ -225,8 +225,8 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "set_note",
-      title: "選用：預填備註",
-      description: "選用工具：只填入備註欄位，不會送單。submit_order 可直接帶 note。參數 note。",
+      title: "填備註",
+      description: "選用：只填備註欄位，不送單。submit_order 可直接帶 note。",
       inputSchema: {
         type: "object",
         properties: { note: { type: "string" } },
