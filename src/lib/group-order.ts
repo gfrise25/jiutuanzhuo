@@ -36,24 +36,30 @@ export type SummaryRow = {
   subtotal: number;
 };
 
+export type PersonTotal = { person_name: string; amount: number };
+
+export type TableStats = {
+  total: number;
+  people_count: number;
+  portions: number;
+  people: PersonTotal[];
+};
+
 export type TableOrders =
-  | {
+  | ({
       ok: true;
       is_host: true;
       table: TableInfo;
-      total: number;
-      people_count: number;
       orders: OrderRow[];
-    }
-  | {
+    } & TableStats)
+  | ({
       ok: true;
       is_host: false;
       table: TableInfo;
-      total: number;
-      people_count: number;
       summary: SummaryRow[];
       my_orders: OrderRow[];
-    };
+    } & TableStats);
+
 
 export type RpcFail = { ok: false; error: string };
 

@@ -101,20 +101,19 @@ function TablePage() {
     : [];
   const total = data.data?.total ?? 0;
   const people = data.data?.people_count ?? 0;
+  const portions = data.data?.portions ?? 0;
+  const peopleList = data.data?.people ?? [];
   const closed = info?.status === "closed";
 
   const names = useMemo(
     () => new Map((menu.data ?? []).map((m) => [m.id, m.name])),
     [menu.data],
   );
-  const portions = useMemo(
-    () =>
-      orders.reduce(
-        (n, o) => n + (o.items ?? []).reduce((s, i) => s + (i.qty ?? 0), 0),
-        0,
-      ),
+  const itemsById = useMemo(
+    () => new Map(orders.map((o) => [o.person_name, o])),
     [orders],
   );
+
 
   // 新訂單短暫反白
   useEffect(() => {
@@ -325,9 +324,9 @@ function TablePage() {
     );
   }
 
-  // 座位：自己看得到的訂單 + 其他人以匿名座位補齊
-  const ghostSeats = Math.max(0, people - new Set(orders.map((o) => o.person_name)).size);
-  const seatCount = orders.length + ghostSeats + (closed ? 0 : 1);
+  // 座位與明細都以 RPC 回傳的每人金額清單為唯一資料來源
+  const seatCount = peopleList.length + (closed ? 0 : 1);
+
 
   return (
     <section className="stage">
@@ -371,26 +370,20 @@ function TablePage() {
                 <b>{twd(total)}</b>
                 <span>{info?.pickup ?? ""}</span>
               </div>
-              {orders.map((o, i) => (
-                <div
-                  key={o.id}
-                  className={`seat ${o.via_agent ? "agent" : "full"}${
-                    flash.has(o.id) ? " flash" : ""
-                  }`}
-                  style={seatStyle(i, seatCount)}
-                >
-                  {o.via_agent ? `Agent\n${o.person_name}` : o.person_name}
-                </div>
-              ))}
-              {Array.from({ length: ghostSeats }).map((_, i) => (
-                <div
-                  key={`g${i}`}
-                  className="seat full"
-                  style={seatStyle(orders.length + i, seatCount)}
-                >
-                  同事
-                </div>
-              ))}
+              {peopleList.map((p, i) => {
+                const o = itemsById.get(p.person_name);
+                return (
+                  <div
+                    key={p.person_name}
+                    className={`seat ${o?.via_agent ? "agent" : "full"}${
+                      o && flash.has(o.id) ? " flash" : ""
+                    }`}
+                    style={seatStyle(i, seatCount)}
+                  >
+                    {o?.via_agent ? `Agent\n${p.person_name}` : p.person_name}
+                  </div>
+                );
+              })}
               {!closed ? (
                 <div className="seat" style={seatStyle(seatCount - 1, seatCount)}>
                   ＋
@@ -400,19 +393,26 @@ function TablePage() {
           )}
 
           <div className="ledger">
-            {orders.map((o) => (
-              <div className={`row${flash.has(o.id) ? " new" : ""}`} key={o.id}>
-                <div className="name">
-                  {o.person_name}
-                  {info && o.person_name === info.host_name ? "（桌主）" : ""}
-                  {o.via_agent ? <span className="tag">Agent 代點</span> : null}
+            {peopleList.map((p) => {
+              const o = itemsById.get(p.person_name);
+              return (
+                <div
+                  className={`row${o && flash.has(o.id) ? " new" : ""}`}
+                  key={p.person_name}
+                >
+                  <div className="name">
+                    {p.person_name}
+                    {info && p.person_name === info.host_name ? "（桌主）" : ""}
+                    {o?.via_agent ? <span className="tag">Agent 代點</span> : null}
+                  </div>
+                  <div className="amt">{twd(p.amount)}</div>
+                  {!closed && o ? <div className="items">{itemsText(o, names)}</div> : null}
                 </div>
-                <div className="amt">{twd(o.amount)}</div>
-                {!closed ? <div className="items">{itemsText(o, names)}</div> : null}
-              </div>
-            ))}
-            {orders.length === 0 ? <p className="note">還沒有人點餐。</p> : null}
+              );
+            })}
+            {peopleList.length === 0 ? <p className="note">還沒有人點餐。</p> : null}
           </div>
+
 
           <div className="total">
             <span>整桌合計</span>
