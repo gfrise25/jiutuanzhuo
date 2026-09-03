@@ -76,7 +76,7 @@ function OpenTablePage() {
   // ── 開桌頁的 WebMCP 工具 ───────────────────────────
   useEffect(() => {
     if (!isWebMcpAvailable()) {
-      console.info("[揪團桌] 這個瀏覽器沒有 navigator.modelContext，略過 WebMCP 工具註冊。");
+      console.info("[揪團桌] 這個瀏覽器沒有 document.modelContext，略過 WebMCP 工具註冊。");
       return;
     }
     const disposers: Array<(() => void) | null> = [];

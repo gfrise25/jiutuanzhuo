@@ -165,7 +165,7 @@ function TablePage() {
   useEffect(() => {
     if (!ready || !info) return;
     if (!isWebMcpAvailable()) {
-      console.info("[揪團桌] 這個瀏覽器沒有 navigator.modelContext，略過 WebMCP 工具註冊。");
+      console.info("[揪團桌] 這個瀏覽器沒有 document.modelContext，略過 WebMCP 工具註冊。");
       return;
     }
     const disposers: Array<(() => void) | null> = [];
@@ -591,7 +591,7 @@ function TablePage() {
             {mcpOpen ? (
               <div className="jt-mcp-body">
                 <p>
-                  這一頁會在 <code>navigator.modelContext</code> 註冊工具，支援 WebMCP 的 AI
+                  這一頁會在 <code>document.modelContext</code> 註冊工具，支援 WebMCP 的 AI
                   助理可以直接讀桌況、代點餐。寫入類工具都會先跳確認框，你按「確認」才會送出。
                 </p>
                 <ul>
