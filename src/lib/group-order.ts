@@ -129,6 +129,55 @@ export async function closeTable(tableId: string) {
   return result;
 }
 
+/** 「油庫口團」→「油庫口團（第 2 團）」→「（第 3 團）」 */
+export function nextRoundName(name: string) {
+  const m = name.match(/^(.*)（第\s*(\d+)\s*團）$/);
+  if (m) return `${m[1]}（第 ${Number(m[2]) + 1} 團）`;
+  return `${name}（第 2 團）`;
+}
+
+export type ReopenResult = { id: string; name: string; deadline: string; pickup: string };
+
+/**
+ * 結單後再開一桌：沿用原桌設定另外建立一筆新的 tables 資料，
+ * 舊桌與它的訂單完全不動，歷史紀錄保留。
+ */
+export async function reopenTable(input: {
+  sourceTableId: string;
+  hours?: number;
+}): Promise<ReopenResult> {
+  const { data: userRes } = await supabase.auth.getUser();
+  const uid = userRes.user?.id;
+  if (!uid) throw new Error("尚未登入");
+
+  const { data: src, error: readErr } = await supabase
+    .from("tables")
+    .select("name,host_name,host_uid,pickup")
+    .eq("id", input.sourceTableId)
+    .single();
+  if (readErr) throw new Error(readErr.message);
+  if (!src) throw new Error("找不到這一桌");
+  if (src.host_uid !== uid) throw new Error("只有桌主可以再開一桌");
+
+  const hours = input.hours && input.hours > 0 ? Math.min(input.hours, 72) : 2;
+  const deadline = new Date(Date.now() + hours * 3600_000).toISOString();
+  const name = nextRoundName(src.name);
+
+  const { data, error } = await supabase
+    .from("tables")
+    .insert({
+      name,
+      host_uid: uid,
+      host_name: src.host_name,
+      deadline,
+      pickup: src.pickup,
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return { id: data.id, name, deadline, pickup: src.pickup };
+}
+
 export type PurgeResult = {
   ok: true;
   deleted_count: number;
