@@ -117,10 +117,6 @@ function TablePage() {
     () => new Map((menu.data ?? []).map((m) => [m.id, m.name])),
     [menu.data],
   );
-  const itemsById = useMemo(
-    () => new Map(orders.map((o) => [o.person_name, o])),
-    [orders],
-  );
 
 
   // 新訂單短暫反白
@@ -518,7 +514,7 @@ function TablePage() {
   }
 
   // 座位與明細都以 RPC 回傳的每人金額清單為唯一資料來源
-  const seatCount = peopleList.length + (closed ? 0 : 1);
+  const seatCount = orders.length + (closed ? 0 : 1);
 
 
   return (
