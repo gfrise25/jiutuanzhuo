@@ -61,7 +61,7 @@ function JoinPage() {
     setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(20, (q[id] ?? 0) + delta)) }));
   }
 
-  async function send(): Promise<{ ok: boolean; error?: string; amount?: number }> {
+  async function send(): Promise<{ ok: boolean; error?: string; amount?: number | undefined }> {
     const items = Object.entries(qty)
       .filter(([, v]) => v > 0)
       .map(([k, v]) => ({ item_id: Number(k), qty: v }));
