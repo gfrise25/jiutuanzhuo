@@ -5,8 +5,10 @@ import { toast } from "sonner";
 
 import { useAnonSession } from "@/hooks/useAnonSession";
 import { supabase } from "@/integrations/supabase/client";
+import { registerWebMcpTool, isWebMcpAvailable } from "@/lib/webmcp";
 import {
   closeTable,
+  submitOrder,
   fetchMenu,
   fetchTableOrders,
   formatDeadline,
@@ -61,6 +63,12 @@ function TablePage() {
   const [flash, setFlash] = useState<Set<string>>(new Set());
   const seen = useRef<Set<string> | null>(null);
   const [closing, setClosing] = useState(false);
+  const [confirmBox, setConfirmBox] = useState<{
+    title: string;
+    lines: string[];
+    amount?: string;
+    resolve: (ok: boolean) => void;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
 
   // realtime：orders / tables 有變動就重拉
@@ -122,6 +130,169 @@ function TablePage() {
     const t = setTimeout(() => setFlash(new Set()), 3000);
     return () => clearTimeout(t);
   }, [orders]);
+
+  // ── WebMCP 工具註冊 ─────────────────────────────
+  const live = useRef({
+    info: undefined as typeof info,
+    orders: [] as OrderRow[],
+    menu: [] as { id: number; name: string; price: number }[],
+    total: 0,
+    people: 0,
+  });
+  live.current = {
+    info,
+    orders,
+    menu: (menu.data ?? []).map((m) => ({ id: m.id, name: m.name, price: m.price })),
+    total,
+    people,
+  };
+
+  const askConfirm = (title: string, lines: string[], amount?: string) =>
+    new Promise<boolean>((resolve) => setConfirmBox({ title, lines, amount, resolve }));
+  const askRef = useRef(askConfirm);
+  askRef.current = askConfirm;
+
+  useEffect(() => {
+    if (!ready || !info) return;
+    if (!isWebMcpAvailable()) {
+      console.info("[揪團桌] 這個瀏覽器沒有 navigator.modelContext，略過 WebMCP 工具註冊。");
+      return;
+    }
+    const disposers: Array<(() => void) | null> = [];
+
+    disposers.push(
+      registerWebMcpTool({
+        name: "get_table_status",
+        description:
+          "讀取目前這一桌的資料：桌名、狀態、截止時間、菜單品項（id/名稱/價格）、每筆訂單（名字、品項、數量、小計、是否由 agent 代點）、整桌合計與人數。",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: true },
+        execute: async () => {
+          const s = live.current;
+          return {
+            ok: true,
+            status: s.info?.status ?? "unknown",
+            deadline: s.info?.deadline ?? null,
+            pickup: s.info?.pickup ?? null,
+            user_content: { table_name: s.info?.name ?? "" },
+            menu: s.menu,
+            orders: s.orders.map((o) => ({
+              items: (o.items ?? []).map((i) => ({ item_id: i.item_id, qty: i.qty })),
+              amount: o.amount,
+              via_agent: o.via_agent === true,
+              user_content: { person_name: o.person_name, note: o.note ?? "" },
+            })),
+            total: s.total,
+            people_count: s.people,
+          };
+        },
+      }),
+    );
+
+    if (!closed) {
+      disposers.push(
+        registerWebMcpTool({
+          name: "add_order",
+          description:
+            "替一位參加者在這一桌加點。item_id 請先用 get_table_status 取得。參數：person_name（參加者名字）、items（[{item_id, qty}]）、note（備註，可省略）。",
+          inputSchema: {
+            type: "object",
+            properties: {
+              person_name: { type: "string" },
+              items: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    item_id: { type: "number" },
+                    qty: { type: "number" },
+                  },
+                  required: ["item_id", "qty"],
+                },
+              },
+              note: { type: "string" },
+            },
+            required: ["person_name", "items"],
+            additionalProperties: false,
+          },
+          execute: async (raw) => {
+            const args = (raw ?? {}) as {
+              person_name?: string;
+              items?: { item_id: number; qty: number }[];
+              note?: string;
+            };
+            const personName = (args.person_name ?? "").trim();
+            const items = (args.items ?? []).filter((i) => i && i.qty > 0);
+            if (!personName || items.length === 0) {
+              return { ok: false, error: "缺少 person_name 或 items" };
+            }
+            const s = live.current;
+            const priced = items.map((i) => {
+              const m = s.menu.find((x) => x.id === i.item_id);
+              return {
+                label: `${m?.name ?? `品項 ${i.item_id}`} ×${i.qty}`,
+                sub: (m?.price ?? 0) * i.qty,
+              };
+            });
+            const preview = priced.reduce((n, p) => n + p.sub, 0);
+            const ok = await askRef.current(
+              `要幫「${personName}」加點嗎？`,
+              [...priced.map((p) => p.label), ...(args.note ? [`備註：${args.note}`] : [])],
+              twd(preview),
+            );
+            if (!ok) return { ok: false, error: "使用者取消" };
+            try {
+              const result = await submitOrder({
+                tableId,
+                name: personName,
+                items,
+                note: args.note ?? "",
+                viaAgent: true,
+              });
+              qc.invalidateQueries({ queryKey: ["table", tableId] });
+              return {
+                ok: true,
+                amount: (result as { amount?: number }).amount ?? null,
+                user_content: { person_name: personName, note: args.note ?? "" },
+              };
+            } catch (e) {
+              return { ok: false, error: e instanceof Error ? e.message : "加點失敗" };
+            }
+          },
+        }),
+      );
+
+      if (isHost) {
+        disposers.push(
+          registerWebMcpTool({
+            name: "close_table",
+            description: "把這一桌結單，結單後不能再加點。無參數。",
+            inputSchema: { type: "object", properties: {}, additionalProperties: false },
+            execute: async () => {
+              const s = live.current;
+              const ok = await askRef.current(
+                "確定要結單嗎？",
+                [`${s.people} 人`, "結單後就不能再加點"],
+                twd(s.total),
+              );
+              if (!ok) return { ok: false, error: "使用者取消" };
+              try {
+                await closeTable(tableId);
+                qc.invalidateQueries({ queryKey: ["table", tableId] });
+                return { ok: true, status: "closed", total: s.total, people_count: s.people };
+              } catch (e) {
+                return { ok: false, error: e instanceof Error ? e.message : "結單失敗" };
+              }
+            },
+          }),
+        );
+      }
+    }
+
+    return () => {
+      disposers.forEach((d) => d?.());
+    };
+  }, [ready, !!info, closed, isHost, tableId, qc]);
 
   const shareUrl =
     typeof window !== "undefined" ? `${window.location.origin}/t/${tableId}/join` : "";
@@ -299,6 +470,45 @@ function TablePage() {
           )}
         </div>
       </div>
+
+      {confirmBox ? (
+        <div className="jt-confirm-backdrop" role="dialog" aria-modal="true">
+          <div className="jt-confirm">
+            <h2 className="serif">{confirmBox.title}</h2>
+            <ul>
+              {confirmBox.lines.map((l, i) => (
+                <li key={i}>{l}</li>
+              ))}
+            </ul>
+            {confirmBox.amount ? (
+              <div className="total">
+                <span>金額</span>
+                <span>{confirmBox.amount}</span>
+              </div>
+            ) : null}
+            <div className="jt-confirm-actions">
+              <button
+                className="btn ghost"
+                onClick={() => {
+                  confirmBox.resolve(false);
+                  setConfirmBox(null);
+                }}
+              >
+                取消
+              </button>
+              <button
+                className="btn chili"
+                onClick={() => {
+                  confirmBox.resolve(true);
+                  setConfirmBox(null);
+                }}
+              >
+                確認
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
