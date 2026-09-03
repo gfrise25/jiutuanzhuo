@@ -54,6 +54,7 @@ function TablePage() {
   const session = useAnonSession();
   const ready = !!session.data;
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const menu = useQuery({ queryKey: ["menu"], queryFn: fetchMenu, enabled: ready });
   const data = useQuery({
