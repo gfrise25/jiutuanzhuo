@@ -429,7 +429,7 @@ function TablePage() {
     return () => {
       disposers.forEach((d) => d?.());
     };
-  }, [ready, !!info, closed, isHost, tableId, qc]);
+  }, [ready, !!info, closed, isHost, tableId, qc, navigate]);
 
   const shareUrl =
     typeof window !== "undefined" ? `${window.location.origin}/t/${tableId}/join` : "";
