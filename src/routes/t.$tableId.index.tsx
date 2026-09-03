@@ -66,6 +66,7 @@ function TablePage() {
   const [flash, setFlash] = useState<Set<string>>(new Set());
   const seen = useRef<Set<string> | null>(null);
   const [closing, setClosing] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [confirmBox, setConfirmBox] = useState<{
     title: string;
     lines: string[];
