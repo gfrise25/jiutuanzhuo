@@ -188,11 +188,11 @@ function JoinPage() {
         name: "get_table",
         title: "查看這桌資訊",
         description:
-          "取得這一桌的資訊：桌名、桌主、狀態（收單中或已截止）、截止時間、取餐方式、tableId。",
+          "取得這一桌的資訊與完整菜單：桌名、桌主、狀態（收單中或已截止）、截止時間、取餐方式、tableId，以及每個品項的 id、名稱、單價。",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute: async () => {
-          const t = await waitForTable();
+          const [t, list] = await Promise.all([waitForTable(), ensureMenu()]);
           if (!t) return { ok: false, error: "資料載入中，請稍後再試" };
           return {
             ok: true,
@@ -201,6 +201,7 @@ function JoinPage() {
             status_text: stateRef.current.closed ? "已截止" : "收單中",
             deadline: t.deadline,
             pickup: t.pickup,
+            menu: list.map((m) => ({ id: m.id, name: m.name, price: m.price })),
             user_content: { table_name: t.name, host_name: t.host_name },
           };
         },
