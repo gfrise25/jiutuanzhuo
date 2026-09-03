@@ -100,13 +100,14 @@ export async function submitOrder(input: {
   name: string;
   items: OrderItem[];
   note: string;
+  viaAgent?: boolean;
 }) {
   const { data, error } = await supabase.rpc("add_order", {
     p_table: input.tableId,
     p_name: input.name,
     p_items: input.items as unknown as never,
     p_note: input.note,
-    p_via_agent: false,
+    p_via_agent: input.viaAgent === true,
   });
   if (error) throw new Error(error.message);
   const result = data as unknown as { ok: boolean; error?: string; amount?: number };
