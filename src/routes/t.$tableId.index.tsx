@@ -79,7 +79,7 @@ function JoinTablePage() {
   async function handleSubmit() {
     const items: OrderItem[] = menu
       .filter((m) => (qtys[m.id] ?? 0) > 0)
-      .map((m) => ({ item_id: m.id, qty: qtys[m.id] }));
+      .map((m) => ({ item_id: m.id, qty: qtys[m.id] ?? 0 }));
 
     if (!personName.trim()) {
       toast.error("先填你的名字");
