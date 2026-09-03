@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -9,6 +9,7 @@ import { registerWebMcpTool, isWebMcpAvailable } from "@/lib/webmcp";
 import {
   closeTable,
   purgeTestOrders,
+  reopenTable,
   submitOrder,
   fetchMenu,
   fetchTableOrders,
@@ -53,6 +54,7 @@ function TablePage() {
   const session = useAnonSession();
   const ready = !!session.data;
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const menu = useQuery({ queryKey: ["menu"], queryFn: fetchMenu, enabled: ready });
   const data = useQuery({
@@ -64,6 +66,7 @@ function TablePage() {
   const [flash, setFlash] = useState<Set<string>>(new Set());
   const seen = useRef<Set<string> | null>(null);
   const [closing, setClosing] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [confirmBox, setConfirmBox] = useState<{
     title: string;
     lines: string[];
@@ -373,13 +376,60 @@ function TablePage() {
           }),
         );
       }
-
+    } else if (isHost) {
+      // 結單後：只留唯讀工具 + 桌主可以沿用設定再開一桌（舊桌紀錄保留）
+      disposers.push(
+        registerWebMcpTool({
+          name: "reopen_table",
+          description:
+            "在這一桌已結單的狀態下，沿用同樣的桌名、桌主與取餐方式另外開一桌新的，原本這桌的訂單紀錄不會變動。參數：hours（新桌幾小時後截止，1 到 72，預設 2）。",
+          inputSchema: {
+            type: "object",
+            properties: { hours: { type: "number" } },
+            additionalProperties: false,
+          },
+          execute: async (raw) => {
+            const args = (raw ?? {}) as { hours?: number };
+            const hours =
+              Number.isFinite(args.hours) && (args.hours as number) > 0
+                ? Math.min(args.hours as number, 72)
+                : 2;
+            const s = live.current;
+            const ok = await askRef.current("要沿用這桌的設定再開一桌嗎？", [
+              `桌名：${s.info?.name ?? ""}（會自動加上團次）`,
+              `取餐方式：${s.info?.pickup ?? ""}`,
+              `截止時間：${hours} 小時後`,
+              "這桌的訂單紀錄會完整保留",
+            ]);
+            if (!ok) return { ok: false, error: "使用者取消" };
+            try {
+              const next = await reopenTable({ sourceTableId: tableId, hours });
+              navigate({ to: "/t/$tableId", params: { tableId: next.id } });
+              return {
+                ok: true,
+                table_id: next.id,
+                deadline: next.deadline,
+                pickup: next.pickup,
+                share_url:
+                  typeof window !== "undefined"
+                    ? `${window.location.origin}/t/${next.id}/join`
+                    : null,
+                previous_table_id: tableId,
+                user_content: { table_name: next.name },
+              };
+            } catch (e) {
+              return { ok: false, error: e instanceof Error ? e.message : "再開一桌失敗" };
+            }
+          },
+        }),
+      );
     }
+
 
     return () => {
       disposers.forEach((d) => d?.());
     };
-  }, [ready, !!info, closed, isHost, tableId, qc]);
+  }, [ready, !!info, closed, isHost, tableId, qc, navigate]);
 
   const shareUrl =
     typeof window !== "undefined" ? `${window.location.origin}/t/${tableId}/join` : "";
@@ -397,6 +447,20 @@ function TablePage() {
       setClosing(false);
     }
   }
+
+  async function onReopen() {
+    setReopening(true);
+    try {
+      const next = await reopenTable({ sourceTableId: tableId });
+      toast.success(`已開新桌：${next.name}`);
+      navigate({ to: "/t/$tableId", params: { tableId: next.id } });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "再開一桌失敗");
+    } finally {
+      setReopening(false);
+    }
+  }
+
 
   if (data.isError) {
     return (
@@ -549,7 +613,13 @@ function TablePage() {
                     {isHost && !closed ? "" : "（僅桌主且未結單時註冊）"}：刪除本桌由 Agent
                     代點且名字含關鍵字的測試訂單，參數 keyword、reason，會保留稽核紀錄。
                   </li>
+                  <li>
+                    <b>reopen_table</b>
+                    {isHost && closed ? "" : "（僅桌主且已結單時註冊）"}：沿用桌名、桌主與取餐方式
+                    另外開一桌，參數 hours（幾小時後截止）。舊桌紀錄保留，新桌會自動註冊上面這些工具。
+                  </li>
                 </ul>
+
                 <p className="note">
                   例句：「幫我看這桌現在點了什麼」「幫小美點大腸麵線一碗，少辣」。
                 </p>
@@ -566,10 +636,21 @@ function TablePage() {
               <p className="note" style={{ marginTop: 14 }}>
                 各自把錢轉給桌主{info ? ` ${info.host_name}` : ""}。這頁可以截圖丟群組。
               </p>
+              {isHost ? (
+                <>
+                  <button className="btn chili" onClick={onReopen} disabled={reopening}>
+                    {reopening ? "開桌中…" : "沿用設定，再開一桌"}
+                  </button>
+                  <p className="note">
+                    這桌的紀錄會完整保留，新桌是另一筆資料，截止時間預設兩小時後。
+                  </p>
+                </>
+              ) : null}
               <Link to="/" className="btn soy" style={{ textDecoration: "none" }}>
-                再開一桌
+                從頭開一桌
               </Link>
             </>
+
           ) : (
             <>
               <div className="share">
