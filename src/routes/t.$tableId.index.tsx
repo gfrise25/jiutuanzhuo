@@ -181,13 +181,20 @@ function TablePage() {
         annotations: { readOnlyHint: true },
         execute: async () => {
           const s = live.current;
+          const currentMenu = s.menu.length > 0
+            ? s.menu
+            : (await fetchMenu()).map((item) => ({
+                id: item.id,
+                name: item.name,
+                price: item.price,
+              }));
           return {
             ok: true,
             status: s.info?.status ?? "unknown",
             deadline: s.info?.deadline ?? null,
             pickup: s.info?.pickup ?? null,
             user_content: { table_name: s.info?.name ?? "" },
-            menu: s.menu,
+            menu: currentMenu,
             orders: s.orders.map((o) => ({
               items: (o.items ?? []).map((i) => ({ item_id: i.item_id, qty: i.qty })),
               amount: o.amount,
@@ -259,15 +266,19 @@ function TablePage() {
             }
             const items = args.items;
             const s = live.current;
-            if (s.menu.length === 0) {
-              return { ok: false, error: "菜單尚未載入，請稍後再試" };
-            }
-            const unknown = items.filter((i) => !s.menu.some((m) => m.id === i.item_id));
+            const currentMenu = s.menu.length > 0
+              ? s.menu
+              : (await fetchMenu()).map((item) => ({
+                  id: item.id,
+                  name: item.name,
+                  price: item.price,
+                }));
+            const unknown = items.filter((i) => !currentMenu.some((m) => m.id === i.item_id));
             if (unknown.length > 0) {
               return {
                 ok: false,
                 error: `不存在的 item_id：${unknown.map((i) => i.item_id).join("、")}`,
-                menu: s.menu,
+                menu: currentMenu,
               };
             }
             try {
