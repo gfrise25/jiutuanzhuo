@@ -76,14 +76,22 @@ function ensureMenu(): Promise<MenuItem[]> {
   return menuPromise;
 }
 
+let tableCache: { tableId: string; expiresAt: number; promise: Promise<TableInfo> } | null = null;
+
 async function ensureTable(): Promise<
   { ok: true; tableId: string; table: TableInfo } | { ok: false; error: string }
 > {
   const tableId = currentTableId();
   if (!tableId) return { ok: false, error: "目前不在某一桌的頁面，沒有 tableId" };
   try {
-    const data = await fetchTableOrders(tableId);
-    return { ok: true, tableId, table: data.table };
+    if (!tableCache || tableCache.tableId !== tableId || tableCache.expiresAt < Date.now()) {
+      tableCache = {
+        tableId,
+        expiresAt: Date.now() + 10_000,
+        promise: fetchTableOrders(tableId).then((data) => data.table),
+      };
+    }
+    return { ok: true, tableId, table: await tableCache.promise };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "讀取這桌資料失敗" };
   }
@@ -284,9 +292,11 @@ export function registerJoinWebMcpTools() {
         if (!tableId) return { ok: false, error: "目前不在某一桌的頁面，沒有 tableId" };
         const list = await ensureMenu();
 
-        if (typeof args.name === "string" && args.name.trim()) setName(args.name.trim());
-        if (typeof args.note === "string") setNote(args.note);
+        const directName = typeof args.name === "string" ? args.name.trim() : "";
+        const directNote = typeof args.note === "string" ? args.note.trim() : "";
+        let directItems: { item_id: number; qty: number }[] | null = null;
         if (Array.isArray(args.items)) {
+          directItems = [];
           for (const entry of args.items) {
             const item = resolveItem(list, entry?.itemId, entry?.itemName);
             if (!item) {
@@ -300,16 +310,18 @@ export function registerJoinWebMcpTools() {
             if (!Number.isInteger(q) || q < 0 || q > 20) {
               return { ok: false, error: "quantity 必須是 0 到 20 的整數" };
             }
-            setQty(item.id, q);
+            if (q > 0) directItems.push({ item_id: item.id, qty: q });
           }
         }
 
-        const finalName = getName().trim();
-        const finalNote = getNote().trim();
-        const qty = getQty();
-        const finalItems = Object.entries(qty)
-          .filter(([, v]) => (v ?? 0) > 0)
-          .map(([k, v]) => ({ item_id: Number(k), qty: v as number }));
+        // 完整參數直接成為 RPC payload，不先更新 React state；這是最快送單路徑。
+        const finalName = directName || getName().trim();
+        const finalNote = typeof args.note === "string" ? directNote : getNote().trim();
+        const finalItems =
+          directItems ??
+          Object.entries(getQty())
+            .filter(([, v]) => (v ?? 0) > 0)
+            .map(([k, v]) => ({ item_id: Number(k), qty: v as number }));
         if (!finalName) return { ok: false, error: "請先填「你的名字」" };
         if (finalItems.length === 0) {
           return { ok: false, error: "所有品項數量都是 0，至少要點一樣東西" };
