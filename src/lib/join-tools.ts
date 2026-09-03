@@ -253,9 +253,8 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "submit_order",
-      title: "立即送出 Agent 訂單",
-      description:
-        "單次完成 Agent 代點。參數為 name、items（每項含 itemId 或 itemName 與 quantity）及選填 note；呼叫後直接寫入資料庫，不顯示確認步驟，回傳資料庫計算的金額與 Agent 標記。",
+      title: "送出訂單",
+      description: "一步完成代點。帶 name 與 items（itemId 或 itemName ＋ quantity），note 選填。直接寫入資料庫並回傳金額。",
       inputSchema: {
         type: "object",
         properties: {
