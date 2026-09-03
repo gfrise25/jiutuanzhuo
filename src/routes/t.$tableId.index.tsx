@@ -567,10 +567,21 @@ function TablePage() {
               <p className="note" style={{ marginTop: 14 }}>
                 各自把錢轉給桌主{info ? ` ${info.host_name}` : ""}。這頁可以截圖丟群組。
               </p>
+              {isHost ? (
+                <>
+                  <button className="btn chili" onClick={onReopen} disabled={reopening}>
+                    {reopening ? "開桌中…" : "沿用設定，再開一桌"}
+                  </button>
+                  <p className="note">
+                    這桌的紀錄會完整保留，新桌是另一筆資料，截止時間預設兩小時後。
+                  </p>
+                </>
+              ) : null}
               <Link to="/" className="btn soy" style={{ textDecoration: "none" }}>
-                再開一桌
+                從頭開一桌
               </Link>
             </>
+
           ) : (
             <>
               <div className="share">
