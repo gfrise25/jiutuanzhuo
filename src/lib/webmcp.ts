@@ -1,4 +1,10 @@
-/** 極簡的 document.modelContext (WebMCP) 包裝，並相容早期 navigator API */
+/**
+ * WebMCP 註冊層。
+ * - 瀏覽器有原生 navigator.modelContext / document.modelContext 就直接用。
+ * - 沒有的話自建相容 polyfill（registerTool / provideContext / listTools / callTool），
+ *   讓 agent 端偵測得到工具。
+ * - SSR 期間完全不執行。
+ */
 
 export type ToolDescriptor = {
   name: string;
@@ -17,59 +23,152 @@ type ModelContextLike = {
   ) => Registration | Promise<Registration | void> | void;
   unregisterTool?: (name: string) => void;
   provideContext?: (context: { tools: unknown[] }) => void;
+  listTools?: () => unknown[];
+  callTool?: (name: string, args?: unknown) => Promise<unknown>;
+  __jtPolyfill?: boolean;
 };
 
-function getModelContext(): ModelContextLike | null {
-  if (typeof document === "undefined") return null;
-  const documentContext = (document as unknown as { modelContext?: ModelContextLike }).modelContext;
-  const legacyContext =
-    typeof navigator === "undefined"
+type WrappedTool = {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  annotations?: Record<string, unknown>;
+  execute: (args: unknown) => Promise<unknown>;
+};
+
+/** 這一頁目前提供的工具 */
+const activeTools = new Map<string, WrappedTool>();
+
+let nativePresent = false;
+
+function isBrowser() {
+  return typeof navigator !== "undefined" && typeof window !== "undefined";
+}
+
+function readNative(): ModelContextLike | null {
+  if (!isBrowser()) return null;
+  const fromNavigator = (navigator as unknown as { modelContext?: ModelContextLike }).modelContext;
+  const fromDocument =
+    typeof document === "undefined"
       ? undefined
-      : (navigator as unknown as { modelContext?: ModelContextLike }).modelContext;
-  const mc = documentContext ?? legacyContext;
-  if (!mc) return null;
-  return typeof mc.registerTool === "function" || typeof mc.provideContext === "function" ? mc : null;
+      : (document as unknown as { modelContext?: ModelContextLike }).modelContext;
+  const mc = fromNavigator ?? fromDocument;
+  if (!mc || mc.__jtPolyfill) return null;
+  return typeof mc.registerTool === "function" || typeof mc.provideContext === "function"
+    ? mc
+    : null;
+}
+
+function createPolyfill(): ModelContextLike {
+  const polyfill: ModelContextLike = {
+    __jtPolyfill: true,
+    registerTool(tool, options) {
+      const t = tool as WrappedTool;
+      activeTools.set(t.name, t);
+      options?.signal?.addEventListener("abort", () => activeTools.delete(t.name));
+      return { unregister: () => activeTools.delete(t.name) };
+    },
+    unregisterTool(name) {
+      activeTools.delete(name);
+    },
+    provideContext(context) {
+      for (const tool of context.tools as WrappedTool[]) {
+        if (tool?.name) activeTools.set(tool.name, tool);
+      }
+    },
+    listTools() {
+      return [...activeTools.values()].map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+        ...(t.annotations ? { annotations: t.annotations } : {}),
+      }));
+    },
+    async callTool(name, args) {
+      const tool = activeTools.get(name);
+      if (!tool) return { ok: false, error: `找不到工具 ${name}` };
+      return tool.execute(args ?? {});
+    },
+  };
+  return polyfill;
+}
+
+let context: ModelContextLike | null = null;
+
+/** 確保 navigator.modelContext（與 document.modelContext）存在，回傳可用的 context */
+export function ensureModelContext(): ModelContextLike | null {
+  if (!isBrowser()) return null;
+  if (context) return context;
+
+  const native = readNative();
+  if (native) {
+    nativePresent = true;
+    context = native;
+  } else {
+    nativePresent = false;
+    context = createPolyfill();
+    try {
+      Object.defineProperty(navigator, "modelContext", {
+        value: context,
+        configurable: true,
+        writable: true,
+      });
+      if (typeof document !== "undefined") {
+        Object.defineProperty(document, "modelContext", {
+          value: context,
+          configurable: true,
+          writable: true,
+        });
+      }
+    } catch (error) {
+      console.error("[揪團桌] 無法安裝 WebMCP polyfill", error);
+    }
+  }
+  installDebugHook();
+  return context;
 }
 
 export function isWebMcpAvailable() {
-  return getModelContext() !== null;
+  return ensureModelContext() !== null;
 }
 
-/** 目前這一頁提供的工具（用於 provideContext 全量宣告） */
-const activeTools = new Map<string, Record<string, unknown>>();
+export function hasNativeModelContext() {
+  ensureModelContext();
+  return nativePresent;
+}
+
+export function listRegisteredWebMcpTools() {
+  return [...activeTools.values()].map((t) => ({
+    name: t.name,
+    description: t.description,
+    inputSchema: t.inputSchema,
+  }));
+}
 
 function syncProvideContext() {
-  const mc = getModelContext();
-  if (!mc || typeof mc.provideContext !== "function") return;
+  if (!context || typeof context.provideContext !== "function") return;
   try {
-    mc.provideContext({ tools: [...activeTools.values()] });
+    context.provideContext({ tools: [...activeTools.values()] });
   } catch (error) {
     console.error("[揪團桌] WebMCP provideContext 失敗", error);
   }
 }
 
-/** 方便在 DevTools 檢查目前註冊了哪些工具 */
-export function listRegisteredWebMcpTools() {
-  return [...activeTools.keys()];
-}
-
 /** 註冊一個工具，回傳解除註冊的函式；環境不支援時回傳 null */
 export function registerWebMcpTool(tool: ToolDescriptor): (() => void) | null {
-  const mc = getModelContext();
+  const mc = ensureModelContext();
   if (!mc) return null;
 
   const controller = new AbortController();
-  let legacyRegistration: Registration | null = null;
+  let registration: Registration | null = null;
 
-  const wrapped = {
+  const wrapped: WrappedTool = {
     name: tool.name,
     description: tool.description,
     inputSchema: tool.inputSchema,
     ...(tool.annotations ? { annotations: tool.annotations } : {}),
     execute: async (args: unknown) => {
       try {
-        // WebMCP 的 execute 直接回傳可結構化複製的 JSON；不要再包一層
-        // MCP transport 的 content/structuredContent envelope。
         return await tool.execute(args);
       } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : "執行失敗" };
@@ -77,42 +176,39 @@ export function registerWebMcpTool(tool: ToolDescriptor): (() => void) | null {
     },
   };
 
-  // Chrome 現行 API 以 AbortSignal 解除註冊；同時保留舊版回傳
-  // registration.unregister() 與 unregisterTool(name) 的相容處理。
+  activeTools.set(wrapped.name, wrapped);
+
   if (typeof mc.registerTool === "function") {
     try {
-      const registration = mc.registerTool(wrapped, { signal: controller.signal });
-      if (registration instanceof Promise) {
-        void registration
+      const result = mc.registerTool(wrapped, { signal: controller.signal });
+      if (result instanceof Promise) {
+        void result
           .then((resolved) => {
-            if (resolved && typeof resolved.unregister === "function") {
-              legacyRegistration = resolved;
-            }
+            if (resolved && typeof resolved.unregister === "function") registration = resolved;
           })
           .catch((error: unknown) => {
             console.error(`[揪團桌] WebMCP 工具 ${tool.name} 註冊失敗`, error);
           });
-      } else if (registration && typeof registration.unregister === "function") {
-        legacyRegistration = registration;
+      } else if (result && typeof result.unregister === "function") {
+        registration = result;
       }
     } catch (error) {
       console.error(`[揪團桌] WebMCP 工具 ${tool.name} 註冊失敗`, error);
     }
   }
 
-  // 部分 Chrome 版本只讀 provideContext 宣告的工具清單，兩種都送。
-  activeTools.set(tool.name, wrapped);
+  // 部分實作只讀 provideContext 宣告的清單，兩條路都送。
   syncProvideContext();
 
   return () => {
     controller.abort();
-    if (legacyRegistration) {
-      legacyRegistration.unregister();
+    if (registration) {
+      registration.unregister();
     } else if (typeof mc.unregisterTool === "function") {
       try {
         mc.unregisterTool(tool.name);
       } catch {
-        /* 忽略：部分版本沒有這個方法 */
+        /* 部分實作沒有這個方法 */
       }
     }
     activeTools.delete(tool.name);
@@ -120,14 +216,23 @@ export function registerWebMcpTool(tool: ToolDescriptor): (() => void) | null {
   };
 }
 
-// 方便你在 Chrome DevTools 直接檢查：__jt.available()、__jt.tools()
-if (typeof window !== "undefined") {
+/** 一次註冊多個工具，回傳統一的解除註冊函式 */
+export function registerWebMcpTools(tools: ToolDescriptor[]): () => void {
+  const disposers = tools.map((t) => registerWebMcpTool(t));
+  return () => disposers.forEach((d) => d?.());
+}
+
+function installDebugHook() {
+  if (typeof window === "undefined") return;
   (window as unknown as { __jt?: unknown }).__jt = {
-    available: isWebMcpAvailable,
-    tools: listRegisteredWebMcpTools,
-    raw: () =>
-      (document as unknown as { modelContext?: unknown }).modelContext ??
-      (navigator as unknown as { modelContext?: unknown }).modelContext ??
-      null,
+    available: () => ({
+      registered: activeTools.size > 0,
+      toolCount: activeTools.size,
+      nativeModelContext: nativePresent,
+      polyfill: !nativePresent,
+    }),
+    tools: () => listRegisteredWebMcpTools(),
+    raw: () => context,
+    call: (name: string, args?: unknown) => context?.callTool?.(name, args),
   };
 }
