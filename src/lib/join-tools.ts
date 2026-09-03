@@ -169,9 +169,8 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "set_item_quantity",
-      title: "選用：預填品項數量",
-      description:
-        "選用工具：只更新品項數量（0-20），不會送單。submit_order 可一次帶完整品項，不需先呼叫本工具。可用 itemId 或 itemName 指定品項。",
+      title: "填數量",
+      description: "選用：只改品項數量（0-20），不送單。可用 itemId 或 itemName。",
       inputSchema: {
         type: "object",
         properties: {
