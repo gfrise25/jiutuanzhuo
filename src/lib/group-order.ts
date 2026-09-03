@@ -58,7 +58,7 @@ export type TableOrders =
 export type RpcFail = { ok: false; error: string };
 
 export function twd(amount: number) {
-  return `NT$${Math.round(amount).toLocaleString("zh-TW")}`;
+  return `$${Math.round(amount).toLocaleString("zh-TW")}`;
 }
 
 export function formatDeadline(iso: string) {
