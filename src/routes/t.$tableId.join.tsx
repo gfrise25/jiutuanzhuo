@@ -150,9 +150,13 @@ function JoinPage() {
       return stateRef.current.info;
     }
 
+    let menuPromise: Promise<MenuItem[]> | null = null;
     async function ensureMenu(): Promise<MenuItem[]> {
       if (stateRef.current.menu.length > 0) return stateRef.current.menu;
-      return fetchMenu();
+      if (!menuPromise) menuPromise = fetchMenu();
+      const list = await menuPromise;
+      if (stateRef.current.menu.length === 0) stateRef.current.menu = list;
+      return list;
     }
 
     function resolveItem(menuList: MenuItem[], itemId?: unknown, itemName?: unknown) {
@@ -184,11 +188,11 @@ function JoinPage() {
         name: "get_table",
         title: "查看這桌資訊",
         description:
-          "取得這一桌的資訊：桌名、桌主、狀態（收單中或已截止）、截止時間、取餐方式、tableId。",
+          "取得這一桌的資訊與完整菜單：桌名、桌主、狀態（收單中或已截止）、截止時間、取餐方式、tableId，以及每個品項的 id、名稱、單價。",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute: async () => {
-          const t = await waitForTable();
+          const [t, list] = await Promise.all([waitForTable(), ensureMenu()]);
           if (!t) return { ok: false, error: "資料載入中，請稍後再試" };
           return {
             ok: true,
@@ -197,6 +201,7 @@ function JoinPage() {
             status_text: stateRef.current.closed ? "已截止" : "收單中",
             deadline: t.deadline,
             pickup: t.pickup,
+            menu: list.map((m) => ({ id: m.id, name: m.name, price: m.price })),
             user_content: { table_name: t.name, host_name: t.host_name },
           };
         },
@@ -219,7 +224,7 @@ function JoinPage() {
         name: "set_item_quantity",
         title: "設定品項數量",
         description:
-          "設定某個品項的數量（0-20），畫面數字與小計會即時更新。可用 itemId 或 itemName 指定品項。",
+          "選用工具：只更新畫面上的品項數量（0-20），不會送單。submit_order 可一次帶完整品項，不需先呼叫本工具。可用 itemId 或 itemName 指定品項。",
         inputSchema: {
           type: "object",
           properties: {
@@ -259,7 +264,8 @@ function JoinPage() {
       {
         name: "set_participant_name",
         title: "填寫名字",
-        description: "填入「你的名字」欄位。參數 name。",
+        description:
+          "選用工具：只填入畫面上的名字欄位，不會送單。submit_order 可直接帶 name。參數 name。",
         inputSchema: {
           type: "object",
           properties: { name: { type: "string" } },
@@ -278,7 +284,8 @@ function JoinPage() {
       {
         name: "set_note",
         title: "填寫備註",
-        description: "填入備註欄位（例如「不要香菜」）。參數 note。",
+        description:
+          "選用工具：只填入畫面上的備註欄位，不會送單。submit_order 可直接帶 note。參數 note。",
         inputSchema: {
           type: "object",
           properties: { note: { type: "string" } },
@@ -308,7 +315,7 @@ function JoinPage() {
         name: "submit_order",
         title: "送出訂單",
         description:
-          "一次送出整張訂單並標記為 Agent 代點。可直接帶 name、items（每項含 itemId 或 itemName 與 quantity）、note；未帶參數時送出畫面上目前的內容。名字空白或總數量為 0 時回傳錯誤而不送出。",
+          "完整送單入口：一次帶 name、items（每項含 itemId 或 itemName 與 quantity）、note 即可完成送單，並標記為 Agent 代點。呼叫後立即寫入資料庫，不會再跳出任何確認步驟；未帶參數時送出畫面上目前的內容。名字空白或總數量為 0 時回傳錯誤而不送出。",
         inputSchema: {
           type: "object",
           properties: {
