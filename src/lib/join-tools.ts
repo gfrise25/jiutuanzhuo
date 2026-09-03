@@ -359,6 +359,11 @@ export function registerJoinWebMcpTools() {
   tools.sort((a, b) => (priority.get(a.name) ?? 99) - (priority.get(b.name) ?? 99));
   const dispose = registerWebMcpTools(tools);
 
+  // 註冊完立刻預抓菜單與桌況（fire-and-forget），填入既有快取，
+  // 讓 agent 第一次呼叫工具時不必等首發 round trip。錯誤吞掉、不噴 console。
+  void ensureMenu().catch(() => {});
+  if (currentTableId()) void ensureTable().catch(() => {});
+
   disposed = dispose;
   return dispose;
 }
