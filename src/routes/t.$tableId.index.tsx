@@ -255,20 +255,6 @@ function TablePage() {
                 menu: s.menu,
               };
             }
-            const priced = items.map((i) => {
-              const m = s.menu.find((x) => x.id === i.item_id);
-              return {
-                label: `${m?.name ?? `品項 ${i.item_id}`} ×${i.qty}`,
-                sub: (m?.price ?? 0) * i.qty,
-              };
-            });
-            const preview = priced.reduce((n, p) => n + p.sub, 0);
-            const ok = await askRef.current(
-              `要幫「${personName}」加點嗎？`,
-              [...priced.map((p) => p.label), ...(args.note ? [`備註：${args.note}`] : [])],
-              twd(preview),
-            );
-            if (!ok) return { ok: false, error: "使用者取消" };
             try {
               const result = await submitOrder({
                 tableId,
@@ -592,7 +578,7 @@ function TablePage() {
               <div className="jt-mcp-body">
                 <p>
                   這一頁會在 <code>document.modelContext</code> 註冊工具，支援 WebMCP 的 AI
-                  助理可以直接讀桌況、代點餐。寫入類工具都會先跳確認框，你按「確認」才會送出。
+                  助理可以直接讀桌況、代點餐。add_order 通過品項與數量驗證後會直接送單；結單、清理與重開桌仍會先跳確認框。
                 </p>
                 <ul>
                   <li>
@@ -602,7 +588,7 @@ function TablePage() {
                   <li>
                     <b>add_order</b>
                     {closed ? "（已結單，未註冊）" : ""}：替一位參加者加點，參數 person_name、
-                    items（[{"{"} item_id, qty {"}"}]）、note。item_id 先用 get_table_status 取得。
+                    items（[{"{"} item_id, qty {"}"}]）、note。item_id 先用 get_table_status 取得，驗證成功後直接送單。
                   </li>
                   <li>
                     <b>close_table</b>
