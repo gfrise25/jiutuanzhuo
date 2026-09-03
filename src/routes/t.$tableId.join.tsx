@@ -308,17 +308,71 @@ function JoinPage() {
         name: "submit_order",
         title: "送出訂單",
         description:
-          "送出這張訂單，等同按下「送出，加入桌上」。名字空白或所有數量為 0 時會回傳錯誤而不送出。",
-        inputSchema: { type: "object", properties: {}, additionalProperties: false },
-        annotations: { readOnlyHint: false, idempotentHint: false },
-        execute: async () => {
+          "一次送出整張訂單並標記為 Agent 代點。可直接帶 name、items（每項含 itemId 或 itemName 與 quantity）、note；未帶參數時送出畫面上目前的內容。名字空白或總數量為 0 時回傳錯誤而不送出。",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            note: { type: "string" },
+            items: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  itemId: { type: "integer", minimum: 1 },
+                  itemName: { type: "string" },
+                  quantity: { type: "integer", minimum: 0, maximum: 20 },
+                },
+                required: ["quantity"],
+                additionalProperties: false,
+              },
+            },
+          },
+          additionalProperties: false,
+        },
+        annotations: { readOnlyHint: false, idempotentHint: false, untrustedContentHint: true },
+        execute: async (raw) => {
+          const args = (raw ?? {}) as {
+            name?: string;
+            note?: string;
+            items?: { itemId?: number; itemName?: string; quantity?: number }[];
+          };
           if (stateRef.current.closed) return { ok: false, error: "這桌已結單，無法送出" };
+          const list = await ensureMenu();
+
+          if (typeof args.name === "string" && args.name.trim()) {
+            applyName(args.name.trim());
+            stateRef.current.name = nameRef.current;
+          }
+          if (typeof args.note === "string") {
+            applyNote(args.note);
+            stateRef.current.note = noteRef.current;
+          }
+          if (Array.isArray(args.items)) {
+            for (const entry of args.items) {
+              const item = resolveItem(list, entry?.itemId, entry?.itemName);
+              if (!item) {
+                return {
+                  ok: false,
+                  error: "找不到這個品項",
+                  items: list.map((m) => ({ id: m.id, name: m.name, price: m.price })),
+                };
+              }
+              const q = Number(entry?.quantity);
+              if (!Number.isInteger(q) || q < 0 || q > 20) {
+                return { ok: false, error: "quantity 必須是 0 到 20 的整數" };
+              }
+              applyQty(item.id, q);
+            }
+            stateRef.current.qty = qtyRef.current;
+          }
+
           if (!stateRef.current.name.trim()) return { ok: false, error: "請先填「你的名字」" };
           const total = Object.values(stateRef.current.qty).reduce((s, v) => s + (v ?? 0), 0);
           if (total <= 0) return { ok: false, error: "所有品項數量都是 0，至少要點一樣東西" };
-          const result = await stateRef.current.send();
+          const result = await stateRef.current.send({ viaAgent: true });
           return result.ok
-            ? { ok: true, amount: result.amount, message: "已加入這桌" }
+            ? { ok: true, amount: result.amount, via_agent: true, message: "已加入這桌（Agent 代點）" }
             : { ok: false, error: result.error ?? "送出失敗" };
         },
       },
