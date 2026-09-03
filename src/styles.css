@@ -242,3 +242,44 @@ body{font-family:"Noto Sans TC",system-ui,sans-serif;background:var(--jt-bg);col
 .jt-confirm-actions .btn {
   flex: 1;
 }
+
+.jt-mcp {
+  margin-top: 14px;
+  border: 1px dashed var(--jt-line, rgba(60, 40, 30, 0.25));
+  border-radius: 12px;
+  overflow: hidden;
+}
+.jt-mcp-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 14px;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.jt-mcp-state {
+  font-size: 12px;
+  opacity: 0.65;
+}
+.jt-mcp-body {
+  padding: 0 12px 12px;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.jt-mcp-body ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+.jt-mcp-body li {
+  margin-bottom: 6px;
+}
+.jt-mcp-body code {
+  font-size: 12px;
+}
