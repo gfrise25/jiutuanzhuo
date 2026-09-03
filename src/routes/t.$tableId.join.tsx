@@ -150,9 +150,13 @@ function JoinPage() {
       return stateRef.current.info;
     }
 
+    let menuPromise: Promise<MenuItem[]> | null = null;
     async function ensureMenu(): Promise<MenuItem[]> {
       if (stateRef.current.menu.length > 0) return stateRef.current.menu;
-      return fetchMenu();
+      if (!menuPromise) menuPromise = fetchMenu();
+      const list = await menuPromise;
+      if (stateRef.current.menu.length === 0) stateRef.current.menu = list;
+      return list;
     }
 
     function resolveItem(menuList: MenuItem[], itemId?: unknown, itemName?: unknown) {
