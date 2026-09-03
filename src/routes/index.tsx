@@ -2,166 +2,147 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useAnonSession } from "@/hooks/useAnonSession";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/")({
+  ssr: false,
   head: () => ({
     meta: [
-      { title: "揪團桌 — 油庫口蚵仔麵線團購" },
+      { title: "揪團桌 — 開一桌，大家一起點" },
       {
         name: "description",
-        content: "三十秒開一桌油庫口蚵仔麵線團購，分享連結給同事點餐，自動統計品項與金額。",
+        content: "油庫口蚵仔麵線的團購工具：開一桌、丟連結進群組，同事各自點餐，桌況即時更新。",
       },
-      { property: "og:title", content: "揪團桌 — 油庫口蚵仔麵線團購" },
+      { property: "og:title", content: "揪團桌 — 開一桌，大家一起點" },
       {
         property: "og:description",
-        content: "開一桌、丟連結、大家自己點，金額總數自動算好。",
+        content: "開一桌、丟連結進群組，同事各自點餐，桌況即時更新。",
       },
       { property: "og:type", content: "website" },
     ],
   }),
-  component: CreateTablePage,
+  component: OpenTablePage,
 });
 
-function defaultDeadline() {
-  const d = new Date(Date.now() + 60 * 60 * 1000);
-  d.setSeconds(0, 0);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/** 產生今天幾個常見的截止時間選項 */
+function deadlineOptions() {
+  const out: { value: string; label: string }[] = [];
+  const now = new Date();
+  for (const [h, m] of [
+    [11, 0],
+    [11, 30],
+    [12, 0],
+    [12, 30],
+    [17, 30],
+    [18, 0],
+  ] as const) {
+    const d = new Date(now);
+    d.setHours(h, m, 0, 0);
+    if (d.getTime() < now.getTime()) d.setDate(d.getDate() + 1);
+    const day = d.toDateString() === now.toDateString() ? "今天" : "明天";
+    out.push({
+      value: d.toISOString(),
+      label: `${day} ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`,
+    });
+  }
+  return out.sort((a, b) => a.value.localeCompare(b.value));
 }
 
-function CreateTablePage() {
+function OpenTablePage() {
   const navigate = useNavigate();
-  const { data: uid, isLoading: sessionLoading, error: sessionError } = useAnonSession();
+  const session = useAnonSession();
+  const options = deadlineOptions();
 
   const [name, setName] = useState("");
   const [hostName, setHostName] = useState("");
-  const [deadline, setDeadline] = useState(defaultDeadline);
-  const [pickup, setPickup] = useState("外送");
-  const [submitting, setSubmitting] = useState(false);
+  const [deadline, setDeadline] = useState(options[0]!.value);
+  const [pickup, setPickup] = useState("店家外送（滿 600 免運）");
+  const [saving, setSaving] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!uid) {
-      toast.error("還在準備身分，請稍等一下再試");
-      return;
-    }
+  async function submit() {
     if (!name.trim() || !hostName.trim()) {
-      toast.error("團名和團主名字都要填");
+      toast.error("桌名和你的名字都要填");
       return;
     }
-    const when = new Date(deadline);
-    if (Number.isNaN(when.getTime())) {
-      toast.error("取餐時間格式怪怪的");
-      return;
+    setSaving(true);
+    try {
+      const uid = session.data ?? (await import("@/lib/session")).ensureAnonSession();
+      const hostUid = typeof uid === "string" ? uid : await uid;
+      const { data, error } = await supabase
+        .from("tables")
+        .insert({
+          name: name.trim(),
+          host_uid: hostUid,
+          host_name: hostName.trim(),
+          deadline,
+          pickup,
+        })
+        .select("id")
+        .single();
+      if (error) throw new Error(error.message);
+      navigate({ to: "/t/$tableId", params: { tableId: data.id } });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "開桌失敗");
+    } finally {
+      setSaving(false);
     }
-
-    setSubmitting(true);
-    const { data, error } = await supabase
-      .from("tables")
-      .insert({
-        name: name.trim(),
-        host_uid: uid,
-        host_name: hostName.trim(),
-        deadline: when.toISOString(),
-        pickup: pickup.trim() || "外送",
-      })
-      .select("id")
-      .single();
-    setSubmitting(false);
-
-    if (error || !data) {
-      toast.error(error?.message ?? "開團失敗，請再試一次");
-      return;
-    }
-    toast.success("開團成功！把連結丟到群組吧");
-    navigate({ to: "/t/$tableId/host", params: { tableId: data.id } });
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-6 px-5 py-8">
-      <header className="space-y-2">
-        <p className="text-sm font-medium text-primary">油庫口蚵仔麵線</p>
-        <h1 className="text-3xl font-bold tracking-tight">揪團桌</h1>
-        <p className="text-base text-muted-foreground">
-          開一桌、把連結丟到群組，大家自己點，金額自動算。
-        </p>
-      </header>
-
-      {sessionError ? (
-        <p className="rounded-lg bg-destructive/10 p-4 text-base text-destructive">
-          身分準備失敗：{(sessionError as Error).message}
-        </p>
-      ) : null}
-
-      <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl bg-card p-5 shadow-sm">
-        <div className="space-y-2">
-          <Label htmlFor="table-name" className="text-base">
-            團名
-          </Label>
-          <Input
-            id="table-name"
+    <section className="stage">
+      <div className="phone">
+        <div className="hd">
+          <div className="eyebrow">油庫口蚵仔麵線 · 揪團桌</div>
+          <h1 className="serif">開一桌，大家一起點</h1>
+        </div>
+        <div className="body">
+          <label htmlFor="tname">桌名</label>
+          <input
+            id="tname"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="例：週三下午茶麵線團"
-            className="h-12 text-base"
-            maxLength={30}
+            placeholder="業務部 週五午餐"
           />
-        </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="host-name" className="text-base">
-            團主名字
-          </Label>
-          <Input
-            id="host-name"
+          <label htmlFor="hname">你的名字（桌主）</label>
+          <input
+            id="hname"
             value={hostName}
             onChange={(e) => setHostName(e.target.value)}
-            placeholder="例：小美"
-            className="h-12 text-base"
-            maxLength={20}
+            placeholder="Elsa"
           />
-        </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="deadline" className="text-base">
-            取餐時間（同時也是截止時間）
-          </Label>
-          <Input
-            id="deadline"
-            type="datetime-local"
-            value={deadline}
-            onChange={(e) => setDeadline(e.target.value)}
-            className="h-12 text-base"
-          />
-        </div>
+          <label htmlFor="dl">截止時間</label>
+          <select id="dl" value={deadline} onChange={(e) => setDeadline(e.target.value)}>
+            {options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
 
-        <div className="space-y-2">
-          <Label htmlFor="pickup" className="text-base">
-            取餐方式
-          </Label>
-          <Input
-            id="pickup"
-            value={pickup}
-            onChange={(e) => setPickup(e.target.value)}
-            placeholder="外送 / 自取 / 三樓茶水間"
-            className="h-12 text-base"
-            maxLength={30}
-          />
-        </div>
+          <label htmlFor="pk">取餐方式</label>
+          <select id="pk" value={pickup} onChange={(e) => setPickup(e.target.value)}>
+            <option>店家外送（滿 600 免運）</option>
+            <option>自取</option>
+          </select>
 
-        <Button
-          type="submit"
-          className="h-14 w-full text-lg font-semibold"
-          disabled={submitting || sessionLoading}
-        >
-          {submitting ? "開團中…" : "開一桌"}
-        </Button>
-      </form>
-    </main>
+          <button
+            className="btn chili"
+            onClick={submit}
+            disabled={saving || session.isLoading}
+          >
+            {saving ? "開桌中…" : "開桌，拿分享連結"}
+          </button>
+          <p className="note">開桌後會產生一條連結，丟進 LINE 群，同事點進去自己填。</p>
+          {session.isError ? (
+            <p className="note" style={{ color: "var(--jt-chili)" }}>
+              匿名登入失敗，請確認 Supabase 已開啟 Anonymous sign-ins。
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </section>
   );
 }
