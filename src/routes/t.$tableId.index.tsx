@@ -181,6 +181,11 @@ function TablePage() {
               via_agent: o.via_agent === true,
               user_content: { person_name: o.person_name, note: o.note ?? "" },
             })),
+            orders_scope: s.isHost ? "all" : "own_only",
+            people: s.peopleList.map((p) => ({
+              amount: p.amount,
+              user_content: { person_name: p.person_name },
+            })),
             total: s.total,
             people_count: s.people,
           };
@@ -221,11 +226,24 @@ function TablePage() {
               note?: string;
             };
             const personName = (args.person_name ?? "").trim();
-            const items = (args.items ?? []).filter((i) => i && i.qty > 0);
+            const items = (args.items ?? []).filter(
+              (i) => i && Number.isFinite(i.item_id) && Number.isFinite(i.qty) && i.qty > 0,
+            );
             if (!personName || items.length === 0) {
               return { ok: false, error: "缺少 person_name 或 items" };
             }
             const s = live.current;
+            if (s.menu.length === 0) {
+              return { ok: false, error: "菜單尚未載入，請稍後再試" };
+            }
+            const unknown = items.filter((i) => !s.menu.some((m) => m.id === i.item_id));
+            if (unknown.length > 0) {
+              return {
+                ok: false,
+                error: `不存在的 item_id：${unknown.map((i) => i.item_id).join("、")}`,
+                menu: s.menu,
+              };
+            }
             const priced = items.map((i) => {
               const m = s.menu.find((x) => x.id === i.item_id);
               return {
