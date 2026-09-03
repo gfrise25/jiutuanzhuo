@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { registerJoinWebMcpTools } from "@/lib/join-tools";
 
 function NotFoundComponent() {
   return (
@@ -116,6 +117,11 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  // App 一載入就註冊 WebMCP 工具，導航到任何一桌後 agent 立刻拿得到工具清單
+  useEffect(() => {
+    registerJoinWebMcpTools();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
