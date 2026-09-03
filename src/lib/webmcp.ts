@@ -107,9 +107,13 @@ export function ensureModelContext(): ModelContextLike | null {
   if (native) {
     nativePresent = true;
     context = native;
+    // 有些 agent 只看 navigator.modelContext，有些只看 document.modelContext，
+    // 原生只掛在其中一邊時，把同一個物件鏡射到另一邊。
+    mirrorContext(native);
   } else {
     nativePresent = false;
     context = createPolyfill();
+
     try {
       Object.defineProperty(navigator, "modelContext", {
         value: context,
