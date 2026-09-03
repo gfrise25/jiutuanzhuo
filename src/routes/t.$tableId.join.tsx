@@ -374,13 +374,37 @@ function JoinPage() {
             stateRef.current.qty = qtyRef.current;
           }
 
-          if (!stateRef.current.name.trim()) return { ok: false, error: "請先填「你的名字」" };
-          const total = Object.values(stateRef.current.qty).reduce((s, v) => s + (v ?? 0), 0);
-          if (total <= 0) return { ok: false, error: "所有品項數量都是 0，至少要點一樣東西" };
-          const result = await stateRef.current.send({ viaAgent: true });
-          return result.ok
-            ? { ok: true, amount: result.amount, via_agent: true, message: "已加入這桌（Agent 代點）" }
-            : { ok: false, error: result.error ?? "送出失敗" };
+          // 直接用當下的 ref 值組出 payload 並立即打 RPC，不等 React 重新渲染
+          const finalName = nameRef.current.trim();
+          const finalNote = noteRef.current.trim();
+          const finalItems = Object.entries(qtyRef.current)
+            .filter(([, v]) => (v ?? 0) > 0)
+            .map(([k, v]) => ({ item_id: Number(k), qty: v as number }));
+          if (!finalName) return { ok: false, error: "請先填「你的名字」" };
+          if (finalItems.length === 0) {
+            return { ok: false, error: "所有品項數量都是 0，至少要點一樣東西" };
+          }
+          try {
+            const result = await submitOrder({
+              tableId,
+              name: finalName,
+              items: finalItems,
+              note: finalNote,
+              viaAgent: true,
+            });
+            toast.success("已加入這桌（Agent 代點）");
+            void navigate({ to: "/t/$tableId", params: { tableId } });
+            return {
+              ok: true,
+              amount: result.amount,
+              via_agent: true,
+              message: "已加入這桌（Agent 代點）",
+            };
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : "送出失敗";
+            toast.error(msg);
+            return { ok: false, error: msg };
+          }
         },
       },
     ]);
