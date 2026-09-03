@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -9,6 +9,7 @@ import { registerWebMcpTool, isWebMcpAvailable } from "@/lib/webmcp";
 import {
   closeTable,
   purgeTestOrders,
+  reopenTable,
   submitOrder,
   fetchMenu,
   fetchTableOrders,
