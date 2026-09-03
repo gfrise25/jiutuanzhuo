@@ -11,10 +11,8 @@ import {
   isClosed,
   submitOrder,
   twd,
-  type MenuItem,
-  type TableInfo,
 } from "@/lib/group-order";
-import { isWebMcpAvailable, registerWebMcpTools } from "@/lib/webmcp";
+import { attachJoinBridge } from "@/lib/join-tools";
 
 export const Route = createFileRoute("/t/$tableId/join")({
   ssr: false,
