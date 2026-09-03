@@ -242,8 +242,8 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "get_current_order",
-      title: "查看目前訂單",
-      description: "回傳目前表單狀態：名字、各品項數量、備註、小計金額。",
+      title: "目前訂單",
+      description: "回傳表單現況：名字、各品項數量、備註、小計。",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       execute: async () => {
