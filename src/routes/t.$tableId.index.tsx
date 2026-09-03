@@ -44,10 +44,11 @@ function seatStyle(i: number, total: number): React.CSSProperties {
 
 function itemsText(order: OrderRow, names: Map<number, string>) {
   const parts = (order.items ?? []).map(
-    (i) => `${names.get(i.item_id) ?? `品項 ${i.item_id}`} ×${i.qty}`,
+    (i) => `${names.get(i.item_id) ?? `未知品項 #${i.item_id}`} ×${i.qty}`,
   );
-  return order.note ? `${parts.join("、")} · ${order.note}` : parts.join("、");
+  return parts.join("、");
 }
+
 
 function TablePage() {
   const { tableId } = Route.useParams();
