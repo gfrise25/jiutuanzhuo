@@ -48,6 +48,24 @@ function JoinPage() {
   const [qty, setQty] = useState<Record<number, number>>({});
   const [sending, setSending] = useState(false);
 
+  // 表單真值：ref 為主，避免 React 重新渲染把 agent 剛寫入的值蓋掉
+  const nameRef = useRef("");
+  const noteRef = useRef("");
+  const qtyRef = useRef<Record<number, number>>({});
+
+  function applyName(value: string) {
+    nameRef.current = value;
+    setName(value);
+  }
+  function applyNote(value: string) {
+    noteRef.current = value;
+    setNote(value);
+  }
+  function applyQty(id: number, value: number) {
+    qtyRef.current = { ...qtyRef.current, [id]: value };
+    setQty({ ...qtyRef.current });
+  }
+
   const subtotal = useMemo(
     () =>
       (menu.data ?? []).reduce((sum, m) => sum + m.price * (qty[m.id] ?? 0), 0),
@@ -58,14 +76,14 @@ function JoinPage() {
   const closed = info ? isClosed(info) : false;
 
   function bump(id: number, delta: number) {
-    setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(20, (q[id] ?? 0) + delta)) }));
+    applyQty(id, Math.max(0, Math.min(20, (qtyRef.current[id] ?? 0) + delta)));
   }
 
   async function send(): Promise<{ ok: boolean; error?: string; amount?: number | undefined }> {
-    const items = Object.entries(qty)
+    const items = Object.entries(qtyRef.current)
       .filter(([, v]) => v > 0)
       .map(([k, v]) => ({ item_id: Number(k), qty: v }));
-    if (!name.trim()) {
+    if (!nameRef.current.trim()) {
       toast.error("請填你的名字");
       return { ok: false, error: "請先填「你的名字」" };
     }
@@ -75,7 +93,12 @@ function JoinPage() {
     }
     setSending(true);
     try {
-      const result = await submitOrder({ tableId, name: name.trim(), items, note: note.trim() });
+      const result = await submitOrder({
+        tableId,
+        name: nameRef.current.trim(),
+        items,
+        note: noteRef.current.trim(),
+      });
       toast.success("已加入這桌");
       navigate({ to: "/t/$tableId", params: { tableId } });
       return { ok: true, amount: result.amount };
@@ -103,9 +126,9 @@ function JoinPage() {
     menu: menu.data ?? [],
     info,
     closed,
-    name,
-    note,
-    qty,
+    name: nameRef.current,
+    note: noteRef.current,
+    qty: qtyRef.current,
     subtotal,
     send,
   };
@@ -221,8 +244,8 @@ function JoinPage() {
           if (!Number.isInteger(q) || q < 0 || q > 20) {
             return { ok: false, error: "quantity 必須是 0 到 20 的整數" };
           }
-          setQty((prev) => ({ ...prev, [item.id]: q }));
-          stateRef.current.qty = { ...stateRef.current.qty, [item.id]: q };
+          applyQty(item.id, q);
+          stateRef.current.qty = qtyRef.current;
           return {
             ok: true,
             item: { id: item.id, name: item.name, price: item.price, qty: q },
@@ -244,7 +267,7 @@ function JoinPage() {
         execute: async (raw) => {
           const value = String((raw as { name?: unknown } | null)?.name ?? "").trim();
           if (!value) return { ok: false, error: "name 不可以是空字串" };
-          setName(value);
+          applyName(value);
           stateRef.current.name = value;
           return { ok: true, user_content: { name: value } };
         },
@@ -262,7 +285,7 @@ function JoinPage() {
         annotations: { readOnlyHint: false, idempotentHint: true, untrustedContentHint: true },
         execute: async (raw) => {
           const value = String((raw as { note?: unknown } | null)?.note ?? "");
-          setNote(value);
+          applyNote(value);
           stateRef.current.note = value;
           return { ok: true, user_content: { note: value } };
         },
@@ -327,7 +350,7 @@ function JoinPage() {
           <input
             id="me"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => applyName(e.target.value)}
             placeholder="小陳"
             disabled={closed}
           />
@@ -356,7 +379,7 @@ function JoinPage() {
           <input
             id="note"
             value={note}
-            onChange={(e) => setNote(e.target.value)}
+            onChange={(e) => applyNote(e.target.value)}
             placeholder="不要香菜"
             disabled={closed}
           />
