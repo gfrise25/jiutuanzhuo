@@ -29,7 +29,7 @@ Three principles the codebase actually follows:
 ```
 Browser page
 ├── UI (TanStack Start + React)
-└── navigator.modelContext  ──┐
+└── document.modelContext   ──┐
                               ├──► supabase-js (anon key, RLS enforced)
                               │         │
                               │         ▼
