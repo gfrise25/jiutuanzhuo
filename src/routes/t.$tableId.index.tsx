@@ -137,6 +137,8 @@ function TablePage() {
     menu: [] as { id: number; name: string; price: number }[],
     total: 0,
     people: 0,
+    isHost: false,
+    peopleList: [] as { person_name: string; amount: number }[],
   });
   live.current = {
     info,
@@ -144,6 +146,8 @@ function TablePage() {
     menu: (menu.data ?? []).map((m) => ({ id: m.id, name: m.name, price: m.price })),
     total,
     people,
+    isHost,
+    peopleList,
   };
 
   const askConfirm = (title: string, lines: string[], amount?: string) =>
