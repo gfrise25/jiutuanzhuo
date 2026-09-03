@@ -66,7 +66,7 @@ function TablePage() {
   const [confirmBox, setConfirmBox] = useState<{
     title: string;
     lines: string[];
-    amount?: string;
+    amount?: string | undefined;
     resolve: (ok: boolean) => void;
   } | null>(null);
   const [copied, setCopied] = useState(false);
