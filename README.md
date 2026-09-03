@@ -4,15 +4,6 @@
 
 Built for the OpenAI WebMCP Challenge. Live preview: see the Devpost submission.
 
-**Where the WebMCP tools are declared** — the agent surface is 14 tools across four files:
-
-| File | Tools |
-| --- | --- |
-| `src/lib/webmcp.ts` | `document.modelContext` / `navigator.modelContext` detection, a compatible polyfill, and the `registerWebMcpTool` helper |
-| `src/routes/index.tsx` | `get_menu` · `create_table` |
-| `src/routes/t.$tableId.join.tsx` | `get_table` · `list_menu_items` · `set_item_quantity` · `set_participant_name` · `set_note` · `get_current_order` · `submit_order` |
-| `src/routes/t.$tableId.index.tsx` | `get_table_status` · `add_order` · `close_table` · `reopen_table`, plus `cleanup_test_orders` registered only when `import.meta.env.DEV` |
-
 ---
 
 ## The problem
