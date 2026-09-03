@@ -11,15 +11,20 @@ export const Route = createFileRoute("/")({
   ssr: false,
   head: () => ({
     meta: [
-      { title: "揪團桌 — 開一桌，大家一起點" },
+      { title: "揪團桌 — 開一桌，大家一起點（OpenAI WebMCP 比賽作品）" },
       {
         name: "description",
-        content: "油庫口蚵仔麵線的團購工具：開一桌、丟連結進群組，同事各自點餐，桌況即時更新。",
+        content:
+          "油庫口蚵仔麵線的團購工具：開一桌、丟連結進群組，同事各自點餐，桌況即時更新。這是參加 OpenAI WebMCP 的比賽網站。",
       },
-      { property: "og:title", content: "揪團桌 — 開一桌，大家一起點" },
+      {
+        property: "og:title",
+        content: "揪團桌 — 開一桌，大家一起點（OpenAI WebMCP 比賽作品）",
+      },
       {
         property: "og:description",
-        content: "開一桌、丟連結進群組，同事各自點餐，桌況即時更新。",
+        content:
+          "油庫口蚵仔麵線的團購工具：開一桌、丟連結進群組，同事各自點餐，桌況即時更新。這是參加 OpenAI WebMCP 的比賽網站。",
       },
       { property: "og:type", content: "website" },
     ],
