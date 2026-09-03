@@ -16,6 +16,7 @@ type ModelContextLike = {
     options?: { signal?: AbortSignal },
   ) => Registration | Promise<Registration | void> | void;
   unregisterTool?: (name: string) => void;
+  provideContext?: (context: { tools: unknown[] }) => void;
 };
 
 function getModelContext(): ModelContextLike | null {
@@ -26,11 +27,30 @@ function getModelContext(): ModelContextLike | null {
       ? undefined
       : (navigator as unknown as { modelContext?: ModelContextLike }).modelContext;
   const mc = documentContext ?? legacyContext;
-  return mc && typeof mc.registerTool === "function" ? mc : null;
+  if (!mc) return null;
+  return typeof mc.registerTool === "function" || typeof mc.provideContext === "function" ? mc : null;
 }
 
 export function isWebMcpAvailable() {
   return getModelContext() !== null;
+}
+
+/** 目前這一頁提供的工具（用於 provideContext 全量宣告） */
+const activeTools = new Map<string, Record<string, unknown>>();
+
+function syncProvideContext() {
+  const mc = getModelContext();
+  if (!mc || typeof mc.provideContext !== "function") return;
+  try {
+    mc.provideContext({ tools: [...activeTools.values()] });
+  } catch (error) {
+    console.error("[揪團桌] WebMCP provideContext 失敗", error);
+  }
+}
+
+/** 方便在 DevTools 檢查目前註冊了哪些工具 */
+export function listRegisteredWebMcpTools() {
+  return [...activeTools.keys()];
 }
 
 /** 註冊一個工具，回傳解除註冊的函式；環境不支援時回傳 null */
@@ -59,32 +79,43 @@ export function registerWebMcpTool(tool: ToolDescriptor): (() => void) | null {
 
   // Chrome 現行 API 以 AbortSignal 解除註冊；同時保留舊版回傳
   // registration.unregister() 與 unregisterTool(name) 的相容處理。
-  try {
-    const registration = mc.registerTool?.(wrapped, { signal: controller.signal });
-    if (registration instanceof Promise) {
-      void registration
-        .then((resolved) => {
-          if (resolved && typeof resolved.unregister === "function") {
-            legacyRegistration = resolved;
-          }
-        })
-        .catch((error: unknown) => {
-          console.error(`[揪團桌] WebMCP 工具 ${tool.name} 註冊失敗`, error);
-        });
-    } else if (registration && typeof registration.unregister === "function") {
-      legacyRegistration = registration;
+  if (typeof mc.registerTool === "function") {
+    try {
+      const registration = mc.registerTool(wrapped, { signal: controller.signal });
+      if (registration instanceof Promise) {
+        void registration
+          .then((resolved) => {
+            if (resolved && typeof resolved.unregister === "function") {
+              legacyRegistration = resolved;
+            }
+          })
+          .catch((error: unknown) => {
+            console.error(`[揪團桌] WebMCP 工具 ${tool.name} 註冊失敗`, error);
+          });
+      } else if (registration && typeof registration.unregister === "function") {
+        legacyRegistration = registration;
+      }
+    } catch (error) {
+      console.error(`[揪團桌] WebMCP 工具 ${tool.name} 註冊失敗`, error);
     }
-  } catch (error) {
-    console.error(`[揪團桌] WebMCP 工具 ${tool.name} 註冊失敗`, error);
-    return null;
   }
+
+  // 部分 Chrome 版本只讀 provideContext 宣告的工具清單，兩種都送。
+  activeTools.set(tool.name, wrapped);
+  syncProvideContext();
 
   return () => {
     controller.abort();
     if (legacyRegistration) {
       legacyRegistration.unregister();
     } else if (typeof mc.unregisterTool === "function") {
-      mc.unregisterTool(tool.name);
+      try {
+        mc.unregisterTool(tool.name);
+      } catch {
+        /* 忽略：部分版本沒有這個方法 */
+      }
     }
+    activeTools.delete(tool.name);
+    syncProvideContext();
   };
 }
