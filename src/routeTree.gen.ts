@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TTableIdIndexRouteImport } from './routes/t.$tableId.index'
+import { Route as TTableIdJoinRouteImport } from './routes/t.$tableId.join'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,30 +23,39 @@ const TTableIdIndexRoute = TTableIdIndexRouteImport.update({
   path: '/t/$tableId/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TTableIdJoinRoute = TTableIdJoinRouteImport.update({
+  id: '/t/$tableId/join',
+  path: '/t/$tableId/join',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/t/$tableId/join': typeof TTableIdJoinRoute
   '/t/$tableId/': typeof TTableIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/t/$tableId/join': typeof TTableIdJoinRoute
   '/t/$tableId': typeof TTableIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/t/$tableId/join': typeof TTableIdJoinRoute
   '/t/$tableId/': typeof TTableIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/t/$tableId/'
+  fullPaths: '/' | '/t/$tableId/join' | '/t/$tableId/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/t/$tableId'
-  id: '__root__' | '/' | '/t/$tableId/'
+  to: '/' | '/t/$tableId/join' | '/t/$tableId'
+  id: '__root__' | '/' | '/t/$tableId/join' | '/t/$tableId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  TTableIdJoinRoute: typeof TTableIdJoinRoute
   TTableIdIndexRoute: typeof TTableIdIndexRoute
 }
 
@@ -65,11 +75,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TTableIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/t/$tableId/join': {
+      id: '/t/$tableId/join'
+      path: '/t/$tableId/join'
+      fullPath: '/t/$tableId/join'
+      preLoaderRoute: typeof TTableIdJoinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  TTableIdJoinRoute: TTableIdJoinRoute,
   TTableIdIndexRoute: TTableIdIndexRoute,
 }
 export const routeTree = rootRouteImport

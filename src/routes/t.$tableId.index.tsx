@@ -1,247 +1,304 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Minus, Plus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Link, createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { useAnonSession } from "@/hooks/useAnonSession";
+import { supabase } from "@/integrations/supabase/client";
 import {
+  closeTable,
   fetchMenu,
   fetchTableOrders,
   formatDeadline,
-  isClosed,
-  submitOrder,
   twd,
-  type OrderItem,
+  type OrderRow,
 } from "@/lib/group-order";
 
 export const Route = createFileRoute("/t/$tableId/")({
+  ssr: false,
   head: () => ({
     meta: [
-      { title: "我要點餐 — 揪團桌" },
-      { name: "description", content: "選你的油庫口蚵仔麵線品項與數量，直接加入這一桌團購。" },
-      { property: "og:title", content: "我要點餐 — 揪團桌" },
-      { property: "og:description", content: "選品項、填數量，一鍵加入這桌麵線團購。" },
+      { title: "桌況即時 — 揪團桌" },
+      { name: "description", content: "看看這桌現在有誰點了什麼，合計多少，即時更新。" },
+      { property: "og:title", content: "桌況即時 — 揪團桌" },
+      { property: "og:description", content: "看看這桌現在有誰點了什麼，合計多少，即時更新。" },
       { property: "og:type", content: "website" },
     ],
   }),
-  component: JoinTablePage,
+  component: TablePage,
 });
 
-function JoinTablePage() {
+/** 依座位數量把座位平均排在圓桌邊上 */
+function seatStyle(i: number, total: number): React.CSSProperties {
+  const r = 104;
+  const a = (Math.PI * 2 * i) / Math.max(total, 1) - Math.PI / 2;
+  return {
+    left: 104 + r * Math.cos(a),
+    top: 104 + r * Math.sin(a),
+  };
+}
+
+function itemsText(order: OrderRow, names: Map<number, string>) {
+  const parts = (order.items ?? []).map(
+    (i) => `${names.get(i.item_id) ?? `品項 ${i.item_id}`} ×${i.qty}`,
+  );
+  return order.note ? `${parts.join("、")} · ${order.note}` : parts.join("、");
+}
+
+function TablePage() {
   const { tableId } = Route.useParams();
-  const queryClient = useQueryClient();
-  const { data: uid } = useAnonSession();
+  const session = useAnonSession();
+  const ready = !!session.data;
+  const qc = useQueryClient();
 
-  const [personName, setPersonName] = useState("");
-  const [note, setNote] = useState("");
-  const [qtys, setQtys] = useState<Record<number, number>>({});
-  const [submitting, setSubmitting] = useState(false);
-
-  const menuQuery = useQuery({
-    queryKey: ["menu"],
-    queryFn: fetchMenu,
-    enabled: Boolean(uid),
-  });
-
-  const tableQuery = useQuery({
-    queryKey: ["table-orders", tableId],
+  const menu = useQuery({ queryKey: ["menu"], queryFn: fetchMenu, enabled: ready });
+  const data = useQuery({
+    queryKey: ["table", tableId],
     queryFn: () => fetchTableOrders(tableId),
-    enabled: Boolean(uid),
+    enabled: ready,
   });
 
-  const menu = menuQuery.data ?? [];
-  const data = tableQuery.data;
-  const closed = data ? isClosed(data.table) : false;
-  const myOrders = data && data.is_host === false ? data.my_orders : [];
+  const [flash, setFlash] = useState<Set<string>>(new Set());
+  const seen = useRef<Set<string> | null>(null);
+  const [closing, setClosing] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const itemName = useMemo(
-    () => Object.fromEntries(menu.map((m) => [m.id, m.name])),
-    [menu],
+  // realtime：orders / tables 有變動就重拉
+  useEffect(() => {
+    if (!ready) return;
+    const channel = supabase
+      .channel(`table-${tableId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders", filter: `table_id=eq.${tableId}` },
+        () => qc.invalidateQueries({ queryKey: ["table", tableId] }),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tables", filter: `id=eq.${tableId}` },
+        () => qc.invalidateQueries({ queryKey: ["table", tableId] }),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [ready, tableId, qc]);
+
+  const info = data.data?.table;
+  const isHost = data.data?.is_host === true;
+  const orders: OrderRow[] = data.data
+    ? data.data.is_host
+      ? data.data.orders
+      : data.data.my_orders
+    : [];
+  const total = data.data?.total ?? 0;
+  const people = data.data?.people_count ?? 0;
+  const closed = info?.status === "closed";
+
+  const names = useMemo(
+    () => new Map((menu.data ?? []).map((m) => [m.id, m.name])),
+    [menu.data],
+  );
+  const portions = useMemo(
+    () =>
+      orders.reduce(
+        (n, o) => n + (o.items ?? []).reduce((s, i) => s + (i.qty ?? 0), 0),
+        0,
+      ),
+    [orders],
   );
 
-  const total = useMemo(
-    () => menu.reduce((sum, m) => sum + m.price * (qtys[m.id] ?? 0), 0),
-    [menu, qtys],
-  );
-
-  function bump(id: number, delta: number) {
-    setQtys((prev) => {
-      const next = Math.min(20, Math.max(0, (prev[id] ?? 0) + delta));
-      return { ...prev, [id]: next };
-    });
-  }
-
-  async function handleSubmit() {
-    const items: OrderItem[] = menu
-      .filter((m) => (qtys[m.id] ?? 0) > 0)
-      .map((m) => ({ item_id: m.id, qty: qtys[m.id] ?? 0 }));
-
-    if (!personName.trim()) {
-      toast.error("先填你的名字");
+  // 新訂單短暫反白
+  useEffect(() => {
+    const ids = orders.map((o) => o.id);
+    if (seen.current === null) {
+      seen.current = new Set(ids);
       return;
     }
-    if (items.length === 0) {
-      toast.error("至少要點一樣東西");
-      return;
-    }
+    const fresh = ids.filter((id) => !seen.current!.has(id));
+    if (fresh.length === 0) return;
+    fresh.forEach((id) => seen.current!.add(id));
+    setFlash(new Set(fresh));
+    const t = setTimeout(() => setFlash(new Set()), 3000);
+    return () => clearTimeout(t);
+  }, [orders]);
 
-    setSubmitting(true);
+  const shareUrl =
+    typeof window !== "undefined" ? `${window.location.origin}/t/${tableId}/join` : "";
+
+  async function onClose() {
+    if (!window.confirm("確定要結單嗎？結單後就不能再加點。")) return;
+    setClosing(true);
     try {
-      const res = await submitOrder({
-        tableId,
-        name: personName.trim(),
-        items,
-        note: note.trim(),
-      });
-      toast.success(`已加入，這單 ${twd(res.amount ?? total)}`);
-      setQtys({});
-      setNote("");
-      await queryClient.invalidateQueries({ queryKey: ["table-orders", tableId] });
-    } catch (err) {
-      toast.error((err as Error).message);
+      await closeTable(tableId);
+      toast.success("已結單");
+      qc.invalidateQueries({ queryKey: ["table", tableId] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "結單失敗");
     } finally {
-      setSubmitting(false);
+      setClosing(false);
     }
   }
 
-  if (tableQuery.error) {
+  if (data.isError) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 px-5 text-center">
-        <h1 className="text-2xl font-bold">打不開這一桌</h1>
-        <p className="text-base text-muted-foreground">{(tableQuery.error as Error).message}</p>
-        <Link to="/" className="text-base font-medium text-primary underline">
-          回首頁開一桌
-        </Link>
-      </main>
+      <section className="stage">
+        <div className="phone">
+          <div className="body">
+            <p className="note">
+              {data.error instanceof Error ? data.error.message : "讀取這一桌失敗"}
+            </p>
+          </div>
+        </div>
+      </section>
     );
   }
 
+  // 座位：自己看得到的訂單 + 其他人以匿名座位補齊
+  const ghostSeats = Math.max(0, people - new Set(orders.map((o) => o.person_name)).size);
+  const seatCount = orders.length + ghostSeats + (closed ? 0 : 1);
+
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-5 px-5 py-8">
-      <header className="space-y-1">
-        <p className="text-sm font-medium text-primary">油庫口蚵仔麵線</p>
-        <h1 className="text-2xl font-bold tracking-tight">
-          {data?.table.name ?? "載入中…"}
-        </h1>
-        {data ? (
-          <p className="text-base text-muted-foreground">
-            團主 {data.table.host_name}・{data.table.pickup}・取餐 {formatDeadline(data.table.deadline)}
-          </p>
-        ) : null}
-      </header>
-
-      {closed ? (
-        <p className="rounded-xl bg-destructive/10 p-4 text-base font-medium text-destructive">
-          這桌已經截止，不能再加點了。
-        </p>
-      ) : null}
-
-      <section className="space-y-3 rounded-2xl bg-card p-5 shadow-sm">
-        <h2 className="text-lg font-semibold">菜單</h2>
-        {menu.map((m) => (
-          <div key={m.id} className="flex items-center justify-between gap-3 border-b border-border py-3 last:border-b-0">
-            <div>
-              <p className="text-base font-medium">{m.name}</p>
-              <p className="text-sm text-muted-foreground">{twd(m.price)}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="size-11"
-                aria-label={`減少 ${m.name}`}
-                disabled={closed || (qtys[m.id] ?? 0) === 0}
-                onClick={() => bump(m.id, -1)}
-              >
-                <Minus className="size-5" />
-              </Button>
-              <span className="w-8 text-center text-lg font-semibold tabular-nums">
-                {qtys[m.id] ?? 0}
+    <section className="stage">
+      <div className="phone">
+        <div className="hd">
+          <div className="eyebrow">{info?.name ?? "揪團桌"}</div>
+          <h1 className="serif">
+            {closed ? "這桌結單了" : `桌上現在有 ${people} 個人`}
+          </h1>
+          {info ? (
+            <div style={{ marginTop: 8 }}>
+              <span className={`state${closed ? " closed" : ""}`}>
+                {closed ? null : <i className="dot" />}
+                {closed
+                  ? "已結單 · 店家已收到"
+                  : `收單中 · ${formatDeadline(info.deadline)} 截止`}
               </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="size-11"
-                aria-label={`增加 ${m.name}`}
-                disabled={closed}
-                onClick={() => bump(m.id, 1)}
-              >
-                <Plus className="size-5" />
-              </Button>
             </div>
-          </div>
-        ))}
-        {menuQuery.isLoading ? <p className="text-base text-muted-foreground">菜單載入中…</p> : null}
-      </section>
+          ) : null}
+        </div>
 
-      <section className="space-y-4 rounded-2xl bg-card p-5 shadow-sm">
-        <div className="space-y-2">
-          <Label htmlFor="person" className="text-base">
-            你的名字
-          </Label>
-          <Input
-            id="person"
-            value={personName}
-            onChange={(e) => setPersonName(e.target.value)}
-            placeholder="例：阿宏"
-            maxLength={20}
-            className="h-12 text-base"
-            disabled={closed}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="note" className="text-base">
-            備註（可不填）
-          </Label>
-          <Textarea
-            id="note"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="不要香菜、多辣…"
-            maxLength={50}
-            className="min-h-20 text-base"
-            disabled={closed}
-          />
-        </div>
-        <div className="flex items-center justify-between text-lg font-semibold">
-          <span>這單金額</span>
-          <span className="tabular-nums">{twd(total)}</span>
-        </div>
-        <Button
-          className="h-14 w-full text-lg font-semibold"
-          disabled={closed || submitting}
-          onClick={handleSubmit}
-        >
-          {submitting ? "送出中…" : "送出我的餐點"}
-        </Button>
-      </section>
-
-      <section className="space-y-3 rounded-2xl bg-card p-5 shadow-sm">
-        <h2 className="text-lg font-semibold">我的訂單</h2>
-        {myOrders.length === 0 ? (
-          <p className="text-base text-muted-foreground">你還沒點東西。</p>
-        ) : (
-          myOrders.map((o) => (
-            <div key={o.id} className="border-b border-border py-3 last:border-b-0">
-              <div className="flex items-center justify-between">
-                <span className="text-base font-medium">{o.person_name}</span>
-                <span className="text-base font-semibold tabular-nums">{twd(o.amount)}</span>
+        <div className="body">
+          {closed ? (
+            <div className="kpi">
+              <div>
+                <b>{people}</b>
+                <span>人</span>
               </div>
-              <p className="text-base text-muted-foreground">
-                {o.items.map((i) => `${itemName[i.item_id] ?? `#${i.item_id}`} × ${i.qty}`).join("、")}
-              </p>
-              {o.note ? <p className="text-sm text-muted-foreground">備註：{o.note}</p> : null}
+              <div>
+                <b>{portions}</b>
+                <span>份</span>
+              </div>
+              <div>
+                <b>{twd(total)}</b>
+                <span>合計</span>
+              </div>
             </div>
-          ))
-        )}
-      </section>
-    </main>
+          ) : (
+            <div className="jt-table">
+              <div className="top">
+                <b>{twd(total)}</b>
+                <span>{info?.pickup ?? ""}</span>
+              </div>
+              {orders.map((o, i) => (
+                <div
+                  key={o.id}
+                  className={`seat ${o.via_agent ? "agent" : "full"}${
+                    flash.has(o.id) ? " flash" : ""
+                  }`}
+                  style={seatStyle(i, seatCount)}
+                >
+                  {o.via_agent ? `Agent\n${o.person_name}` : o.person_name}
+                </div>
+              ))}
+              {Array.from({ length: ghostSeats }).map((_, i) => (
+                <div
+                  key={`g${i}`}
+                  className="seat full"
+                  style={seatStyle(orders.length + i, seatCount)}
+                >
+                  同事
+                </div>
+              ))}
+              {!closed ? (
+                <div className="seat" style={seatStyle(seatCount - 1, seatCount)}>
+                  ＋
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          <div className="ledger">
+            {orders.map((o) => (
+              <div className={`row${flash.has(o.id) ? " new" : ""}`} key={o.id}>
+                <div className="name">
+                  {o.person_name}
+                  {info && o.person_name === info.host_name ? "（桌主）" : ""}
+                  {o.via_agent ? <span className="tag">Agent 代點</span> : null}
+                </div>
+                <div className="amt">{twd(o.amount)}</div>
+                {!closed ? <div className="items">{itemsText(o, names)}</div> : null}
+              </div>
+            ))}
+            {orders.length === 0 ? <p className="note">還沒有人點餐。</p> : null}
+          </div>
+
+          <div className="total">
+            <span>整桌合計</span>
+            <span>{twd(total)}</span>
+          </div>
+          <div className="count">
+            <span>
+              {people} 人 · {portions} 份
+            </span>
+            <span>{info?.pickup ?? ""}</span>
+          </div>
+
+          {!isHost && orders.length < people ? (
+            <p className="note">其他人的明細只有桌主看得到。</p>
+          ) : null}
+
+          {closed ? (
+            <>
+              <p className="note" style={{ marginTop: 14 }}>
+                各自把錢轉給桌主{info ? ` ${info.host_name}` : ""}。這頁可以截圖丟群組。
+              </p>
+              <Link to="/" className="btn soy" style={{ textDecoration: "none" }}>
+                再開一桌
+              </Link>
+            </>
+          ) : (
+            <>
+              <div className="share">
+                <input value={shareUrl} readOnly />
+                <button
+                  className="btn ghost"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(shareUrl);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                >
+                  {copied ? "已複製" : "複製連結"}
+                </button>
+              </div>
+              <Link
+                to="/t/$tableId/join"
+                params={{ tableId }}
+                className="btn ghost"
+                style={{ textDecoration: "none" }}
+              >
+                我也要點
+              </Link>
+              {isHost ? (
+                <button className="btn chili" onClick={onClose} disabled={closing}>
+                  {closing ? "結單中…" : "結單"}
+                </button>
+              ) : null}
+            </>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
