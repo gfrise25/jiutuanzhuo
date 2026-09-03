@@ -71,6 +71,9 @@ function TablePage() {
     resolve: (ok: boolean) => void;
   } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [mcpReady, setMcpReady] = useState(false);
+  const [mcpOpen, setMcpOpen] = useState(false);
+  useEffect(() => setMcpReady(isWebMcpAvailable()), []);
 
   // realtime：orders / tables 有變動就重拉
   useEffect(() => {
@@ -508,6 +511,50 @@ function TablePage() {
               {people} 人 · {portions} 份
             </span>
             <span>{info?.pickup ?? ""}</span>
+          </div>
+
+          <div className="jt-mcp">
+            <button
+              className="jt-mcp-toggle"
+              aria-expanded={mcpOpen}
+              onClick={() => setMcpOpen((v) => !v)}
+            >
+              <span>AI 代點說明（WebMCP）</span>
+              <span className="jt-mcp-state">
+                {mcpReady ? "已註冊工具" : "此瀏覽器未支援"}
+              </span>
+            </button>
+            {mcpOpen ? (
+              <div className="jt-mcp-body">
+                <p>
+                  這一頁會在 <code>navigator.modelContext</code> 註冊工具，支援 WebMCP 的 AI
+                  助理可以直接讀桌況、代點餐。寫入類工具都會先跳確認框，你按「確認」才會送出。
+                </p>
+                <ul>
+                  <li>
+                    <b>get_table_status</b>（唯讀）：取得桌名、狀態、截止時間、菜單 id／名稱／價格、
+                    訂單明細、整桌合計與人數。
+                  </li>
+                  <li>
+                    <b>add_order</b>
+                    {closed ? "（已結單，未註冊）" : ""}：替一位參加者加點，參數 person_name、
+                    items（[{"{"} item_id, qty {"}"}]）、note。item_id 先用 get_table_status 取得。
+                  </li>
+                  <li>
+                    <b>close_table</b>
+                    {isHost && !closed ? "" : "（僅桌主且未結單時註冊）"}：把這桌結單，無參數。
+                  </li>
+                  <li>
+                    <b>cleanup_test_orders</b>
+                    {isHost && !closed ? "" : "（僅桌主且未結單時註冊）"}：刪除本桌由 Agent
+                    代點且名字含關鍵字的測試訂單，參數 keyword、reason，會保留稽核紀錄。
+                  </li>
+                </ul>
+                <p className="note">
+                  例句：「幫我看這桌現在點了什麼」「幫小美點大腸麵線一碗，少辣」。
+                </p>
+              </div>
+            ) : null}
           </div>
 
           {!isHost && orders.length < people ? (
