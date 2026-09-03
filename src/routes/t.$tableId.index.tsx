@@ -613,7 +613,13 @@ function TablePage() {
                     {isHost && !closed ? "" : "（僅桌主且未結單時註冊）"}：刪除本桌由 Agent
                     代點且名字含關鍵字的測試訂單，參數 keyword、reason，會保留稽核紀錄。
                   </li>
+                  <li>
+                    <b>reopen_table</b>
+                    {isHost && closed ? "" : "（僅桌主且已結單時註冊）"}：沿用桌名、桌主與取餐方式
+                    另外開一桌，參數 hours（幾小時後截止）。舊桌紀錄保留，新桌會自動註冊上面這些工具。
+                  </li>
                 </ul>
+
                 <p className="note">
                   例句：「幫我看這桌現在點了什麼」「幫小美點大腸麵線一碗，少辣」。
                 </p>
