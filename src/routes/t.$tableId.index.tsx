@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { registerWebMcpTool, isWebMcpAvailable } from "@/lib/webmcp";
 import {
   closeTable,
+  purgeTestOrders,
   submitOrder,
   fetchMenu,
   fetchTableOrders,
