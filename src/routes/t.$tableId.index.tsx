@@ -44,10 +44,11 @@ function seatStyle(i: number, total: number): React.CSSProperties {
 
 function itemsText(order: OrderRow, names: Map<number, string>) {
   const parts = (order.items ?? []).map(
-    (i) => `${names.get(i.item_id) ?? `品項 ${i.item_id}`} ×${i.qty}`,
+    (i) => `${names.get(i.item_id) ?? `未知品項 #${i.item_id}`} ×${i.qty}`,
   );
-  return order.note ? `${parts.join("、")} · ${order.note}` : parts.join("、");
+  return parts.join("、");
 }
+
 
 function TablePage() {
   const { tableId } = Route.useParams();
@@ -115,10 +116,6 @@ function TablePage() {
   const names = useMemo(
     () => new Map((menu.data ?? []).map((m) => [m.id, m.name])),
     [menu.data],
-  );
-  const itemsById = useMemo(
-    () => new Map(orders.map((o) => [o.person_name, o])),
-    [orders],
   );
 
 
@@ -517,7 +514,7 @@ function TablePage() {
   }
 
   // 座位與明細都以 RPC 回傳的每人金額清單為唯一資料來源
-  const seatCount = peopleList.length + (closed ? 0 : 1);
+  const seatCount = orders.length + (closed ? 0 : 1);
 
 
   return (
@@ -562,20 +559,17 @@ function TablePage() {
                 <b>{twd(total)}</b>
                 <span>{info?.pickup ?? ""}</span>
               </div>
-              {peopleList.map((p, i) => {
-                const o = itemsById.get(p.person_name);
-                return (
-                  <div
-                    key={p.person_name}
-                    className={`seat ${o?.via_agent ? "agent" : "full"}${
-                      o && flash.has(o.id) ? " flash" : ""
-                    }`}
-                    style={seatStyle(i, seatCount)}
-                  >
-                    {o?.via_agent ? `Agent\n${p.person_name}` : p.person_name}
-                  </div>
-                );
-              })}
+              {orders.map((o, i) => (
+                <div
+                  key={o.id}
+                  className={`seat ${o.via_agent ? "agent" : "full"}${
+                    flash.has(o.id) ? " flash" : ""
+                  }`}
+                  style={seatStyle(i, seatCount)}
+                >
+                  {o.via_agent ? `Agent\n${o.person_name}` : o.person_name}
+                </div>
+              ))}
               {!closed ? (
                 <div className="seat" style={seatStyle(seatCount - 1, seatCount)}>
                   ＋
@@ -585,25 +579,25 @@ function TablePage() {
           )}
 
           <div className="ledger">
-            {peopleList.map((p) => {
-              const o = itemsById.get(p.person_name);
-              return (
-                <div
-                  className={`row${o && flash.has(o.id) ? " new" : ""}`}
-                  key={p.person_name}
-                >
-                  <div className="name">
-                    {p.person_name}
-                    {info && p.person_name === info.host_name ? "（桌主）" : ""}
-                    {o?.via_agent ? <span className="tag">Agent 代點</span> : null}
-                  </div>
-                  <div className="amt">{twd(p.amount)}</div>
-                  {!closed && o ? <div className="items">{itemsText(o, names)}</div> : null}
+            {orders.map((o) => (
+              <div className={`row${flash.has(o.id) ? " new" : ""}`} key={o.id}>
+                <div className="name">
+                  {o.person_name}
+                  {info && o.person_name === info.host_name ? "（桌主）" : ""}
+                  {o.via_agent ? <span className="tag">Agent 代點</span> : null}
                 </div>
-              );
-            })}
-            {peopleList.length === 0 ? <p className="note">還沒有人點餐。</p> : null}
+                <div className="amt">{twd(o.amount)}</div>
+                {!closed ? (
+                  <div className="items">
+                    {itemsText(o, names)}
+                    {o.note ? ` · ${o.note}` : ""}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+            {orders.length === 0 ? <p className="note">還沒有人點餐。</p> : null}
           </div>
+
 
 
           <div className="total">
