@@ -399,6 +399,20 @@ function TablePage() {
     }
   }
 
+  async function onReopen() {
+    setReopening(true);
+    try {
+      const next = await reopenTable({ sourceTableId: tableId });
+      toast.success(`已開新桌：${next.name}`);
+      navigate({ to: "/t/$tableId", params: { tableId: next.id } });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "再開一桌失敗");
+    } finally {
+      setReopening(false);
+    }
+  }
+
+
   if (data.isError) {
     return (
       <section className="stage">
