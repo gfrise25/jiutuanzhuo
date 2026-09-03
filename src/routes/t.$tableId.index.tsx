@@ -101,20 +101,19 @@ function TablePage() {
     : [];
   const total = data.data?.total ?? 0;
   const people = data.data?.people_count ?? 0;
+  const portions = data.data?.portions ?? 0;
+  const peopleList = data.data?.people ?? [];
   const closed = info?.status === "closed";
 
   const names = useMemo(
     () => new Map((menu.data ?? []).map((m) => [m.id, m.name])),
     [menu.data],
   );
-  const portions = useMemo(
-    () =>
-      orders.reduce(
-        (n, o) => n + (o.items ?? []).reduce((s, i) => s + (i.qty ?? 0), 0),
-        0,
-      ),
+  const itemsById = useMemo(
+    () => new Map(orders.map((o) => [o.person_name, o])),
     [orders],
   );
+
 
   // 新訂單短暫反白
   useEffect(() => {
