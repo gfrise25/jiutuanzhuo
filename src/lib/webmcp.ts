@@ -1,4 +1,4 @@
-/** 極簡的 navigator.modelContext (WebMCP) 包裝 */
+/** 極簡的 document.modelContext (WebMCP) 包裝，並相容早期 navigator API */
 
 export type ToolDescriptor = {
   name: string;
@@ -16,8 +16,13 @@ type ModelContextLike = {
 };
 
 function getModelContext(): ModelContextLike | null {
-  if (typeof navigator === "undefined") return null;
-  const mc = (navigator as unknown as { modelContext?: ModelContextLike }).modelContext;
+  if (typeof document === "undefined") return null;
+  const documentContext = (document as unknown as { modelContext?: ModelContextLike }).modelContext;
+  const legacyContext =
+    typeof navigator === "undefined"
+      ? undefined
+      : (navigator as unknown as { modelContext?: ModelContextLike }).modelContext;
+  const mc = documentContext ?? legacyContext;
   return mc && typeof mc.registerTool === "function" ? mc : null;
 }
 
