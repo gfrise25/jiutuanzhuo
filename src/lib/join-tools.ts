@@ -136,9 +136,8 @@ export function registerJoinWebMcpTools() {
   const tools: ToolDescriptor[] = [
     {
       name: "get_table",
-      title: "查看這桌資訊",
-      description:
-        "取得目前這一桌的資訊與完整菜單：桌名、桌主、狀態（收單中或已截止）、截止時間、取餐方式、tableId，以及每個品項的 id、名稱、單價。",
+      title: "這桌資訊",
+      description: "取得桌名、桌主、收單狀態、截止時間、tableId 與完整菜單（含 id、名稱、單價）。",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       execute: async () => {
@@ -159,8 +158,8 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "list_menu_items",
-      title: "查看菜單",
-      description: "列出可點的菜單品項，每項含 id、名稱、單價。",
+      title: "菜單",
+      description: "列出品項的 id、名稱、單價。",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true },
       execute: async () => {
