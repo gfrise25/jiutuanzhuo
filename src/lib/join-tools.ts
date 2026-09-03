@@ -350,3 +350,7 @@ export function registerJoinWebMcpTools() {
   disposed = dispose;
   return dispose;
 }
+
+// 模組載入即同步註冊；比 React useEffect 更早，避免 agent 在 hydration 前抓到空清單。
+// SSR 會由函式內的 window guard 直接略過，瀏覽器端重複呼叫則由 disposed 防重。
+if (typeof window !== "undefined") registerJoinWebMcpTools();
