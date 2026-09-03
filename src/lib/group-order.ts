@@ -128,3 +128,29 @@ export async function closeTable(tableId: string) {
   if (!result?.ok) throw new Error(result?.error ?? "關團失敗");
   return result;
 }
+
+export type PurgeResult = {
+  ok: true;
+  deleted_count: number;
+  deleted: { order_id: string; person_name: string; amount: number }[];
+  keyword: string;
+};
+
+/** 受限清理：只有團主、未結單、只刪 Agent 代點且名字含關鍵字的訂單，並留稽核紀錄 */
+export async function purgeTestOrders(input: {
+  tableId: string;
+  keyword?: string;
+  reason?: string;
+}): Promise<PurgeResult> {
+  const { data, error } = await supabase.rpc("purge_test_orders", {
+    p_table: input.tableId,
+    p_keyword: input.keyword ?? "測試",
+    p_reason: input.reason ?? "WebMCP 測試資料清理",
+  });
+  if (error) throw new Error(error.message);
+  const result = data as unknown as PurgeResult | RpcFail;
+  if (!result || result.ok !== true) {
+    throw new Error((result as RpcFail)?.error ?? "清理失敗");
+  }
+  return result;
+}

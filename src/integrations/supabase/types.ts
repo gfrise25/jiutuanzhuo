@@ -35,6 +35,45 @@ export type Database = {
         }
         Relationships: []
       }
+      order_deletion_log: {
+        Row: {
+          amount: number
+          created_at: string
+          deleted_by: string | null
+          id: string
+          order_id: string
+          order_snapshot: Json
+          person_name: string
+          reason: string
+          table_id: string
+          via_agent: boolean
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          deleted_by?: string | null
+          id?: string
+          order_id: string
+          order_snapshot: Json
+          person_name: string
+          reason?: string
+          table_id: string
+          via_agent: boolean
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          deleted_by?: string | null
+          id?: string
+          order_id?: string
+          order_snapshot?: Json
+          person_name?: string
+          reason?: string
+          table_id?: string
+          via_agent?: boolean
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           amount: number
@@ -132,6 +171,10 @@ export type Database = {
       }
       close_table: { Args: { p_table: string }; Returns: Json }
       list_table_orders: { Args: { p_table: string }; Returns: Json }
+      purge_test_orders: {
+        Args: { p_keyword?: string; p_reason?: string; p_table: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
