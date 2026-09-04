@@ -168,12 +168,14 @@ export function registerJoinWebMcpTools() {
           items?: { itemId?: number; itemName?: string; quantity?: number }[];
         };
         const tableId = currentTableId();
-        if (!tableId) return { ok: false, error: "目前不在某一桌的頁面，沒有 tableId" };
+        if (!tableId)
+          return { ok: false, error: "目前不在某一桌的頁面，沒有 tableId", error_en: "Not on a table page: no tableId in the URL." };
 
         const finalName = typeof args.name === "string" ? args.name.trim() : "";
-        if (!finalName) return { ok: false, error: "請帶 name（訂餐者名字）" };
+        if (!finalName)
+          return { ok: false, error: "請帶 name（訂餐者名字）", error_en: "Missing required field: name." };
         if (!Array.isArray(args.items) || args.items.length === 0) {
-          return { ok: false, error: "請帶 items（至少一個品項與數量）" };
+          return { ok: false, error: "請帶 items（至少一個品項與數量）", error_en: "Missing required field: items (at least one item with quantity)." };
         }
 
         const list = await ensureMenu();
@@ -182,17 +184,29 @@ export function registerJoinWebMcpTools() {
           name: string;
           name_en: string | null;
           price: number;
+          price_display: string;
           qty: number;
           subtotal: number;
+          subtotal_display: string;
         }[] = [];
         for (const entry of args.items) {
           const item = resolveItem(list, entry?.itemId, entry?.itemName);
           if (!item) {
-            return { ok: false, error: "找不到這個品項", menu: menuPayload(list) };
+            return {
+              ok: false,
+              error: "找不到這個品項",
+              error_en: `Unknown item: "${String(entry?.itemName ?? entry?.itemId ?? "")}". Pick one from the menu below and retry.`,
+              menu: menuPayload(list),
+            };
           }
           const q = Number(entry?.quantity);
           if (!Number.isInteger(q) || q < 0 || q > 20) {
-            return { ok: false, error: "quantity 必須是 0 到 20 的整數", menu: menuPayload(list) };
+            return {
+              ok: false,
+              error: "quantity 必須是 0 到 20 的整數",
+              error_en: "quantity must be an integer between 0 and 20.",
+              menu: menuPayload(list),
+            };
           }
           if (q > 0) {
             resolved.push({
@@ -200,13 +214,15 @@ export function registerJoinWebMcpTools() {
               name: item.name,
               name_en: itemNameEn(item.name),
               price: item.price,
+              price_display: `NT$${item.price}`,
               qty: q,
               subtotal: item.price * q,
+              subtotal_display: `NT$${item.price * q}`,
             });
           }
         }
         if (resolved.length === 0) {
-          return { ok: false, error: "所有品項數量都是 0，至少要點一樣東西" };
+          return { ok: false, error: "所有品項數量都是 0，至少要點一樣東西", error_en: "All quantities are 0 — order at least one item." };
         }
 
         const note = typeof args.note === "string" ? args.note.trim() : "";
@@ -221,17 +237,24 @@ export function registerJoinWebMcpTools() {
           });
           // 畫面更新非同步進行，不擋住回傳
           queueMicrotask(() => joinBridge.current?.afterSubmit?.());
+          const subtotal = resolved.reduce((s, r) => s + r.subtotal, 0);
           return {
             ok: true,
             name: finalName,
             items: resolved,
-            subtotal: resolved.reduce((s, r) => s + r.subtotal, 0),
+            subtotal,
+            subtotal_display: `NT$${subtotal}`,
             currency: "TWD",
             tableId,
+            message_en: `Order placed for ${finalName}: ${resolved
+              .map((r) => `${r.name_en ?? r.name} x${r.qty}`)
+              .join(", ")} — total NT$${subtotal}.`,
           };
         } catch (e) {
-          return { ok: false, error: e instanceof Error ? e.message : "送出失敗" };
+          const msg = e instanceof Error ? e.message : "送出失敗";
+          return { ok: false, error: msg, error_en: `Submit failed: ${msg}` };
         }
+
       },
     },
     {
