@@ -6,6 +6,7 @@ import { useAnonSession } from "@/hooks/useAnonSession";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchMenu } from "@/lib/group-order";
 import { isWebMcpAvailable, registerWebMcpTool } from "@/lib/webmcp";
+import { useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/")({
   ssr: false,
@@ -33,7 +34,7 @@ export const Route = createFileRoute("/")({
 });
 
 /** 產生今天幾個常見的截止時間選項 */
-function deadlineOptions() {
+function deadlineOptions(todayLabel: string, tomorrowLabel: string) {
   const out: { value: string; label: string }[] = [];
   const now = new Date();
   for (const [h, m] of [
@@ -47,7 +48,7 @@ function deadlineOptions() {
     const d = new Date(now);
     d.setHours(h, m, 0, 0);
     if (d.getTime() < now.getTime()) d.setDate(d.getDate() + 1);
-    const day = d.toDateString() === now.toDateString() ? "今天" : "明天";
+    const day = d.toDateString() === now.toDateString() ? todayLabel : tomorrowLabel;
     out.push({
       value: d.toISOString(),
       label: `${day} ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`,
@@ -59,7 +60,8 @@ function deadlineOptions() {
 function OpenTablePage() {
   const navigate = useNavigate();
   const session = useAnonSession();
-  const options = deadlineOptions();
+  const { t } = useI18n();
+  const options = deadlineOptions(t("day.today"), t("day.tomorrow"));
 
   const [name, setName] = useState("");
   const [hostName, setHostName] = useState("");
@@ -179,7 +181,7 @@ function OpenTablePage() {
 
   async function submit() {
     if (!name.trim() || !hostName.trim()) {
-      toast.error("桌名和你的名字都要填");
+      toast.error(t("home.err.required"));
       return;
     }
     setSaving(true);
@@ -200,7 +202,7 @@ function OpenTablePage() {
       if (error) throw new Error(error.message);
       navigate({ to: "/t/$tableId", params: { tableId: data.id } });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "開桌失敗");
+      toast.error(e instanceof Error ? e.message : t("home.err.failed"));
     } finally {
       setSaving(false);
     }
@@ -210,27 +212,27 @@ function OpenTablePage() {
     <section className="stage">
       <div className="phone">
         <div className="hd">
-          <div className="eyebrow">油庫口蚵仔麵線 · 揪團桌</div>
-          <h1 className="serif">開一桌，大家一起點</h1>
+          <div className="eyebrow">{t("home.eyebrow")}</div>
+          <h1 className="serif">{t("home.title")}</h1>
         </div>
         <div className="body">
-          <label htmlFor="tname">桌名</label>
+          <label htmlFor="tname">{t("home.tableName")}</label>
           <input
             id="tname"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="業務部 週五午餐"
+            placeholder={t("home.tableName.ph")}
           />
 
-          <label htmlFor="hname">你的名字（桌主）</label>
+          <label htmlFor="hname">{t("home.hostName")}</label>
           <input
             id="hname"
             value={hostName}
             onChange={(e) => setHostName(e.target.value)}
-            placeholder="Elsa"
+            placeholder={t("home.hostName.ph")}
           />
 
-          <label htmlFor="dl">截止時間</label>
+          <label htmlFor="dl">{t("home.deadline")}</label>
           <select id="dl" value={deadline} onChange={(e) => setDeadline(e.target.value)}>
             {options.map((o) => (
               <option key={o.value} value={o.value}>
@@ -239,10 +241,10 @@ function OpenTablePage() {
             ))}
           </select>
 
-          <label htmlFor="pk">取餐方式</label>
+          <label htmlFor="pk">{t("home.pickup")}</label>
           <select id="pk" value={pickup} onChange={(e) => setPickup(e.target.value)}>
-            <option>店家外送（滿 600 免運）</option>
-            <option>自取</option>
+            <option value="店家外送（滿 600 免運）">{t("home.pickup.delivery")}</option>
+            <option value="自取">{t("home.pickup.self")}</option>
           </select>
 
           <button
@@ -250,12 +252,12 @@ function OpenTablePage() {
             onClick={submit}
             disabled={saving || session.isLoading}
           >
-            {saving ? "開桌中…" : "開桌，拿分享連結"}
+            {saving ? t("home.submitting") : t("home.submit")}
           </button>
-          <p className="note">開桌後會產生一條連結，丟進 LINE 群，同事點進去自己填。</p>
+          <p className="note">{t("home.note")}</p>
           {session.isError ? (
             <p className="note" style={{ color: "var(--jt-chili)" }}>
-              匿名登入失敗，請確認 Supabase 已開啟 Anonymous sign-ins。
+              {t("home.authError")}
             </p>
           ) : null}
         </div>
@@ -278,7 +280,7 @@ function OpenTablePage() {
                   setConfirmBox(null);
                 }}
               >
-                取消
+                {t("confirm.cancel")}
               </button>
               <button
                 className="btn chili"
@@ -287,7 +289,7 @@ function OpenTablePage() {
                   setConfirmBox(null);
                 }}
               >
-                確認
+                {t("confirm.ok")}
               </button>
             </div>
           </div>
