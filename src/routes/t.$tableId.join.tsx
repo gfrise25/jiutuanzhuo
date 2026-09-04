@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { useAnonSession } from "@/hooks/useAnonSession";
 import {
+  bilingualName,
   fetchMenu,
   fetchTableOrders,
   formatDeadline,
@@ -166,7 +167,7 @@ function JoinPage() {
           <div className="menu">
             {(menu.data ?? []).map((m) => (
               <div className="item" key={m.id}>
-                <div className="n">{m.name}</div>
+                <div className="n">{bilingualName(m.name)}</div>
                 <div className="p">${m.price}</div>
                 <div className="qty">
                   <button onClick={() => bump(m.id, -1)} disabled={closed} aria-label={t("join.less")}>

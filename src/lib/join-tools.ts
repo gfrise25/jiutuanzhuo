@@ -9,6 +9,7 @@ import {
   fetchMenu,
   fetchTableOrders,
   isClosed,
+  itemNameEn,
   submitOrder,
   type MenuItem,
   type TableInfo,
@@ -90,7 +91,13 @@ function resolveItem(menuList: MenuItem[], itemId?: unknown, itemName?: unknown)
 }
 
 const menuPayload = (list: MenuItem[]) =>
-  list.map((m) => ({ id: m.id, name: m.name, price: m.price }));
+  list.map((m) => ({
+    id: m.id,
+    name: m.name,
+    name_en: itemNameEn(m.name),
+    price: m.price,
+    currency: "TWD",
+  }));
 
 let disposed: (() => void) | null = null;
 
@@ -148,8 +155,14 @@ export function registerJoinWebMcpTools() {
         }
 
         const list = await ensureMenu();
-        const resolved: { id: number; name: string; price: number; qty: number; subtotal: number }[] =
-          [];
+        const resolved: {
+          id: number;
+          name: string;
+          name_en: string | null;
+          price: number;
+          qty: number;
+          subtotal: number;
+        }[] = [];
         for (const entry of args.items) {
           const item = resolveItem(list, entry?.itemId, entry?.itemName);
           if (!item) {
@@ -163,6 +176,7 @@ export function registerJoinWebMcpTools() {
             resolved.push({
               id: item.id,
               name: item.name,
+              name_en: itemNameEn(item.name),
               price: item.price,
               qty: q,
               subtotal: item.price * q,
@@ -190,6 +204,7 @@ export function registerJoinWebMcpTools() {
             name: finalName,
             items: resolved,
             subtotal: resolved.reduce((s, r) => s + r.subtotal, 0),
+            currency: "TWD",
             tableId,
           };
         } catch (e) {
