@@ -216,10 +216,28 @@ function TablePage() {
             deadline: s.info?.deadline ?? null,
             pickup: s.info?.pickup ?? null,
             user_content: { table_name: s.info?.name ?? "" },
-            menu: menuList,
+            menu: menuList.map((m) => ({
+              id: m.id,
+              name: m.name,
+              name_en: itemNameEn(m.name),
+              price: m.price,
+              currency: "TWD",
+            })),
             orders: s.orders.map((o) => ({
-              items: (o.items ?? []).map((i) => ({ item_id: i.item_id, qty: i.qty })),
+              items: (o.items ?? []).map((i) => {
+                const m = menuList.find((x) => x.id === i.item_id);
+                return {
+                  item_id: i.item_id,
+                  qty: i.qty,
+                  name: m?.name ?? null,
+                  name_en: m ? itemNameEn(m.name) : null,
+                  price: m?.price ?? null,
+                  subtotal: m ? m.price * i.qty : null,
+                  currency: "TWD",
+                };
+              }),
               amount: o.amount,
+              currency: "TWD",
               via_agent: o.via_agent === true,
               user_content: { person_name: o.person_name, note: o.note ?? "" },
             })),
@@ -314,7 +332,18 @@ function TablePage() {
             return {
               ok: true,
               amount: (result as { amount?: number }).amount ?? null,
-              items: items.map((item) => ({ item_id: item.item_id, qty: item.qty })),
+              currency: "TWD",
+              items: items.map((item) => {
+                const m = menuList.find((x) => x.id === item.item_id);
+                return {
+                  item_id: item.item_id,
+                  qty: item.qty,
+                  name: m?.name ?? null,
+                  name_en: m ? itemNameEn(m.name) : null,
+                  price: m?.price ?? null,
+                  subtotal: m ? m.price * item.qty : null,
+                };
+              }),
               via_agent: true,
               user_content: { person_name: personName, note: args.note ?? "" },
             };
