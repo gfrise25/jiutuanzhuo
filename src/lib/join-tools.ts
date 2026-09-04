@@ -73,9 +73,26 @@ async function ensureTable(): Promise<
   }
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+const norm = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, "");
 
-/** 寬鬆模糊比對：精準 → 包含 → 被包含；多筆取名稱最短 */
+/** 英文／簡稱別名，讓英文 agent 也能用自然語言指定品項 */
+const EN_ALIASES: Record<string, string[]> = {
+  蚵仔麵線: ["oyster", "oystervermicelli", "oysternoodle", "oysternoodles", "oystermisua"],
+  大腸麵線: ["porkintestine", "intestine", "porkintestinevermicelli", "intestinenoodle"],
+  綜合麵線: ["combo", "combovermicelli", "mixed", "mixednoodle", "combination"],
+  碳烤香腸: ["sausage", "grilledsausage", "bbqsausage", "grilledporksausage"],
+};
+
+function aliasesFor(item: MenuItem): string[] {
+  const en = itemNameEn(item.name);
+  return [
+    norm(item.name),
+    ...(en ? [norm(en)] : []),
+    ...(EN_ALIASES[item.name] ?? []).map(norm),
+  ];
+}
+
+/** 寬鬆模糊比對（中英皆可）：精準 → 別名 → 包含；多筆取名稱最短 */
 function resolveItem(menuList: MenuItem[], itemId?: unknown, itemName?: unknown) {
   if (typeof itemId === "number") {
     const byId = menuList.find((m) => m.id === itemId);
@@ -83,9 +100,11 @@ function resolveItem(menuList: MenuItem[], itemId?: unknown, itemName?: unknown)
   }
   const q = norm(typeof itemName === "string" ? itemName : "");
   if (!q) return undefined;
-  const exact = menuList.find((m) => norm(m.name) === q);
+  const exact = menuList.find((m) => aliasesFor(m).some((a) => a === q));
   if (exact) return exact;
-  const matches = menuList.filter((m) => norm(m.name).includes(q) || q.includes(norm(m.name)));
+  const matches = menuList.filter((m) =>
+    aliasesFor(m).some((a) => a.includes(q) || q.includes(a)),
+  );
   if (matches.length === 0) return undefined;
   return matches.sort((a, b) => a.name.length - b.name.length)[0];
 }
@@ -96,8 +115,10 @@ const menuPayload = (list: MenuItem[]) =>
     name: m.name,
     name_en: itemNameEn(m.name),
     price: m.price,
+    price_display: `NT$${m.price}`,
     currency: "TWD",
   }));
+
 
 let disposed: (() => void) | null = null;
 
