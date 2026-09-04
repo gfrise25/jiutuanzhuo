@@ -64,7 +64,25 @@ export type TableOrders =
 export type RpcFail = { ok: false; error: string };
 
 export function twd(amount: number) {
-  return `$${Math.round(amount).toLocaleString("zh-TW")}`;
+  return `NT$${Math.round(amount).toLocaleString("zh-TW")}`;
+}
+
+/** 菜單品項的英文對照（中英雙語顯示用） */
+export const MENU_EN: Record<string, string> = {
+  綜合麵線: "Combo Vermicelli",
+  蚵仔麵線: "Oyster Vermicelli",
+  大腸麵線: "Pork Intestine Vermicelli",
+  碳烤香腸: "Grilled Sausage",
+};
+
+export function itemNameEn(zhName: string): string | null {
+  return MENU_EN[zhName] ?? null;
+}
+
+/** 「蚵仔麵線 Oyster Vermicelli」雙語品名 */
+export function bilingualName(zhName: string): string {
+  const en = itemNameEn(zhName);
+  return en ? `${zhName} ${en}` : zhName;
 }
 
 export function formatDeadline(iso: string) {
