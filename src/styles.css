@@ -283,3 +283,27 @@ body{font-family:"Noto Sans TC",system-ui,sans-serif;background:var(--jt-bg);col
 .jt-mcp-body code {
   font-size: 12px;
 }
+
+/* 中／英文切換按鈕 */
+.jt-lang-toggle {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 60;
+  min-width: 44px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--jt-line, rgba(60, 40, 30, 0.25));
+  background: var(--jt-paper, #fdf8f1);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(60, 40, 30, 0.12);
+}
+.jt-lang-toggle:hover {
+  border-color: var(--jt-chili, #c0392b);
+  color: var(--jt-chili, #c0392b);
+}
