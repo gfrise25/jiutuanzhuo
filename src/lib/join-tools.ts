@@ -73,9 +73,26 @@ async function ensureTable(): Promise<
   }
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+const norm = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, "");
 
-/** 寬鬆模糊比對：精準 → 包含 → 被包含；多筆取名稱最短 */
+/** 英文／簡稱別名，讓英文 agent 也能用自然語言指定品項 */
+const EN_ALIASES: Record<string, string[]> = {
+  蚵仔麵線: ["oyster", "oystervermicelli", "oysternoodle", "oysternoodles", "oystermisua"],
+  大腸麵線: ["porkintestine", "intestine", "porkintestinevermicelli", "intestinenoodle"],
+  綜合麵線: ["combo", "combovermicelli", "mixed", "mixednoodle", "combination"],
+  碳烤香腸: ["sausage", "grilledsausage", "bbqsausage", "grilledporksausage"],
+};
+
+function aliasesFor(item: MenuItem): string[] {
+  const en = itemNameEn(item.name);
+  return [
+    norm(item.name),
+    ...(en ? [norm(en)] : []),
+    ...(EN_ALIASES[item.name] ?? []).map(norm),
+  ];
+}
+
+/** 寬鬆模糊比對（中英皆可）：精準 → 別名 → 包含；多筆取名稱最短 */
 function resolveItem(menuList: MenuItem[], itemId?: unknown, itemName?: unknown) {
   if (typeof itemId === "number") {
     const byId = menuList.find((m) => m.id === itemId);
@@ -83,9 +100,11 @@ function resolveItem(menuList: MenuItem[], itemId?: unknown, itemName?: unknown)
   }
   const q = norm(typeof itemName === "string" ? itemName : "");
   if (!q) return undefined;
-  const exact = menuList.find((m) => norm(m.name) === q);
+  const exact = menuList.find((m) => aliasesFor(m).some((a) => a === q));
   if (exact) return exact;
-  const matches = menuList.filter((m) => norm(m.name).includes(q) || q.includes(norm(m.name)));
+  const matches = menuList.filter((m) =>
+    aliasesFor(m).some((a) => a.includes(q) || q.includes(a)),
+  );
   if (matches.length === 0) return undefined;
   return matches.sort((a, b) => a.name.length - b.name.length)[0];
 }
@@ -96,8 +115,10 @@ const menuPayload = (list: MenuItem[]) =>
     name: m.name,
     name_en: itemNameEn(m.name),
     price: m.price,
+    price_display: `NT$${m.price}`,
     currency: "TWD",
   }));
+
 
 let disposed: (() => void) | null = null;
 
@@ -113,9 +134,10 @@ export function registerJoinWebMcpTools() {
   const tools: ToolDescriptor[] = [
     {
       name: "submit_order",
-      title: "送出訂單",
+      title: "送出訂單 Submit order",
       description:
-        "代點下單唯一步驟：直接帶 name 與 items 呼叫即可完成送出，不需先呼叫其他工具、不需先查菜單。itemName 支援模糊比對（例：香腸→碳烤香腸）。",
+        "代點下單唯一步驟：帶 name 與 items 直接送出，不需先查菜單。itemName 支援中英模糊比對（香腸／sausage→碳烤香腸）。 | One-step ordering: call with name + items (itemName accepts English, e.g. \"oyster\", \"sausage\"). No other tool needed. Prices are TWD (NT$).",
+
       inputSchema: {
         type: "object",
         properties: {
@@ -146,12 +168,14 @@ export function registerJoinWebMcpTools() {
           items?: { itemId?: number; itemName?: string; quantity?: number }[];
         };
         const tableId = currentTableId();
-        if (!tableId) return { ok: false, error: "目前不在某一桌的頁面，沒有 tableId" };
+        if (!tableId)
+          return { ok: false, error: "目前不在某一桌的頁面，沒有 tableId", error_en: "Not on a table page: no tableId in the URL." };
 
         const finalName = typeof args.name === "string" ? args.name.trim() : "";
-        if (!finalName) return { ok: false, error: "請帶 name（訂餐者名字）" };
+        if (!finalName)
+          return { ok: false, error: "請帶 name（訂餐者名字）", error_en: "Missing required field: name." };
         if (!Array.isArray(args.items) || args.items.length === 0) {
-          return { ok: false, error: "請帶 items（至少一個品項與數量）" };
+          return { ok: false, error: "請帶 items（至少一個品項與數量）", error_en: "Missing required field: items (at least one item with quantity)." };
         }
 
         const list = await ensureMenu();
@@ -160,17 +184,29 @@ export function registerJoinWebMcpTools() {
           name: string;
           name_en: string | null;
           price: number;
+          price_display: string;
           qty: number;
           subtotal: number;
+          subtotal_display: string;
         }[] = [];
         for (const entry of args.items) {
           const item = resolveItem(list, entry?.itemId, entry?.itemName);
           if (!item) {
-            return { ok: false, error: "找不到這個品項", menu: menuPayload(list) };
+            return {
+              ok: false,
+              error: "找不到這個品項",
+              error_en: `Unknown item: "${String(entry?.itemName ?? entry?.itemId ?? "")}". Pick one from the menu below and retry.`,
+              menu: menuPayload(list),
+            };
           }
           const q = Number(entry?.quantity);
           if (!Number.isInteger(q) || q < 0 || q > 20) {
-            return { ok: false, error: "quantity 必須是 0 到 20 的整數", menu: menuPayload(list) };
+            return {
+              ok: false,
+              error: "quantity 必須是 0 到 20 的整數",
+              error_en: "quantity must be an integer between 0 and 20.",
+              menu: menuPayload(list),
+            };
           }
           if (q > 0) {
             resolved.push({
@@ -178,13 +214,15 @@ export function registerJoinWebMcpTools() {
               name: item.name,
               name_en: itemNameEn(item.name),
               price: item.price,
+              price_display: `NT$${item.price}`,
               qty: q,
               subtotal: item.price * q,
+              subtotal_display: `NT$${item.price * q}`,
             });
           }
         }
         if (resolved.length === 0) {
-          return { ok: false, error: "所有品項數量都是 0，至少要點一樣東西" };
+          return { ok: false, error: "所有品項數量都是 0，至少要點一樣東西", error_en: "All quantities are 0 — order at least one item." };
         }
 
         const note = typeof args.note === "string" ? args.note.trim() : "";
@@ -199,40 +237,50 @@ export function registerJoinWebMcpTools() {
           });
           // 畫面更新非同步進行，不擋住回傳
           queueMicrotask(() => joinBridge.current?.afterSubmit?.());
+          const subtotal = resolved.reduce((s, r) => s + r.subtotal, 0);
           return {
             ok: true,
             name: finalName,
             items: resolved,
-            subtotal: resolved.reduce((s, r) => s + r.subtotal, 0),
+            subtotal,
+            subtotal_display: `NT$${subtotal}`,
             currency: "TWD",
             tableId,
+            message_en: `Order placed for ${finalName}: ${resolved
+              .map((r) => `${r.name_en ?? r.name} x${r.qty}`)
+              .join(", ")} — total NT$${subtotal}.`,
           };
         } catch (e) {
-          return { ok: false, error: e instanceof Error ? e.message : "送出失敗" };
+          const msg = e instanceof Error ? e.message : "送出失敗";
+          return { ok: false, error: msg, error_en: `Submit failed: ${msg}` };
         }
+
       },
     },
     {
       name: "get_table",
-      title: "這桌資訊",
+      title: "這桌資訊 Table info",
       description:
-        "只有在需要顯示菜單或桌況時才呼叫；代點下單不需要先呼叫此工具。回傳桌名、桌主、收單狀態、截止時間、tableId 與完整菜單。",
+        "需要顯示菜單或桌況時才呼叫；代點下單不需先呼叫。 | Returns table name, host, open/closed status, deadline, tableId and the full bilingual menu with TWD prices.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       execute: async () => {
         const [t, list] = await Promise.all([ensureTable(), ensureMenu()]);
-        if (!t.ok) return { ok: false, error: t.error };
+        if (!t.ok) return { ok: false, error: t.error, error_en: t.error };
         const closed = isClosed(t.table);
         return {
           ok: true,
           table_id: t.tableId,
           status: closed ? "closed" : "open",
           status_text: closed ? "已截止" : "收單中",
+          status_text_en: closed ? "Closed" : "Open for orders",
           deadline: t.table.deadline,
           pickup: t.table.pickup,
+          currency: "TWD",
           menu: menuPayload(list),
           user_content: { table_name: t.table.name, host_name: t.table.host_name },
         };
+
       },
     },
   ];
