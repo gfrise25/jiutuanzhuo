@@ -13,6 +13,7 @@ import {
   twd,
 } from "@/lib/group-order";
 import { attachJoinBridge } from "@/lib/join-tools";
+import { useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/t/$tableId/join")({
   ssr: false,
@@ -32,6 +33,7 @@ function JoinPage() {
   const { tableId } = Route.useParams();
   const navigate = useNavigate();
   const session = useAnonSession();
+  const { t } = useI18n();
   const ready = !!session.data;
 
   const menu = useQuery({ queryKey: ["menu"], queryFn: fetchMenu, enabled: ready });
@@ -84,11 +86,11 @@ function JoinPage() {
       .filter(([, v]) => v > 0)
       .map(([k, v]) => ({ item_id: Number(k), qty: v }));
     if (!nameRef.current.trim()) {
-      toast.error("請填你的名字");
+      toast.error(t("join.err.name"));
       return { ok: false, error: "請先填「你的名字」" };
     }
     if (items.length === 0) {
-      toast.error("至少要點一樣東西");
+      toast.error(t("join.err.items"));
       return { ok: false, error: "所有品項數量都是 0，至少要點一樣東西" };
     }
     setSending(true);
@@ -100,11 +102,11 @@ function JoinPage() {
         note: noteRef.current.trim(),
         viaAgent: opts?.viaAgent === true,
       });
-      toast.success("已加入這桌");
+      toast.success(t("join.ok"));
       navigate({ to: "/t/$tableId", params: { tableId } });
       return { ok: true, amount: result.amount };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "送出失敗";
+      const msg = e instanceof Error ? e.message : t("join.err.failed");
       toast.error(msg);
       return { ok: false, error: msg };
     } finally {
@@ -123,7 +125,7 @@ function JoinPage() {
       setNote: (v) => applyNote(v),
       setQty: (id, v) => applyQty(id, v),
       afterSubmit: () => {
-        toast.success("已加入這桌（Agent 代點）");
+        toast.success(t("join.okAgent"));
         void navigate({ to: "/t/$tableId", params: { tableId } });
       },
     });
@@ -135,69 +137,69 @@ function JoinPage() {
       <div className="phone">
         <div className="hd">
           <div className="eyebrow">
-            {info ? `${info.name} · 桌主 ${info.host_name}` : "揪團桌"}
+            {info ? `${info.name} · ${t("join.host")} ${info.host_name}` : t("join.brand")}
           </div>
-          <h1 className="serif">加入這桌</h1>
+          <h1 className="serif">{t("join.title")}</h1>
           {info ? (
             <div style={{ marginTop: 8 }}>
               <span className={`state${closed ? " closed" : ""}`}>
                 {closed ? null : <i className="dot" />}
                 {closed
-                  ? "已結單，無法再點"
-                  : `收單中 · ${formatDeadline(info.deadline)} 截止`}
+                  ? t("join.closed")
+                  : t("join.open", { deadline: formatDeadline(info.deadline) })}
               </span>
             </div>
           ) : null}
         </div>
 
         <div className="body">
-          <label htmlFor="me">你的名字</label>
+          <label htmlFor="me">{t("join.yourName")}</label>
           <input
             id="me"
             value={name}
             onChange={(e) => applyName(e.target.value)}
-            placeholder="小陳"
+            placeholder={t("join.yourName.ph")}
             disabled={closed}
           />
 
-          <label>選餐點</label>
+          <label>{t("join.pickItems")}</label>
           <div className="menu">
             {(menu.data ?? []).map((m) => (
               <div className="item" key={m.id}>
                 <div className="n">{m.name}</div>
                 <div className="p">${m.price}</div>
                 <div className="qty">
-                  <button onClick={() => bump(m.id, -1)} disabled={closed} aria-label="減少">
+                  <button onClick={() => bump(m.id, -1)} disabled={closed} aria-label={t("join.less")}>
                     −
                   </button>
                   <span>{qty[m.id] ?? 0}</span>
-                  <button onClick={() => bump(m.id, 1)} disabled={closed} aria-label="增加">
+                  <button onClick={() => bump(m.id, 1)} disabled={closed} aria-label={t("join.more")}>
                     +
                   </button>
                 </div>
               </div>
             ))}
-            {menu.isLoading ? <p className="note">菜單載入中…</p> : null}
+            {menu.isLoading ? <p className="note">{t("join.menuLoading")}</p> : null}
           </div>
 
-          <label htmlFor="note">備註</label>
+          <label htmlFor="note">{t("join.note")}</label>
           <input
             id="note"
             value={note}
             onChange={(e) => applyNote(e.target.value)}
-            placeholder="不要香菜"
+            placeholder={t("join.note.ph")}
             disabled={closed}
           />
         </div>
 
         <div className="sticky">
           <div>
-            <small style={{ color: "var(--jt-mute)" }}>我的小計</small>
+            <small style={{ color: "var(--jt-mute)" }}>{t("join.subtotal")}</small>
             <br />
             <b>{twd(subtotal)}</b>
           </div>
           <button className="btn chili" onClick={() => void send()} disabled={sending || closed}>
-            {closed ? "已結單" : sending ? "送出中…" : "送出，加入桌上"}
+            {closed ? t("join.closedBtn") : sending ? t("join.submitting") : t("join.submit")}
           </button>
         </div>
       </div>

@@ -280,7 +280,7 @@ function OpenTablePage() {
                   setConfirmBox(null);
                 }}
               >
-                取消
+                {t("confirm.cancel")}
               </button>
               <button
                 className="btn chili"
@@ -289,7 +289,7 @@ function OpenTablePage() {
                   setConfirmBox(null);
                 }}
               >
-                確認
+                {t("confirm.ok")}
               </button>
             </div>
           </div>
