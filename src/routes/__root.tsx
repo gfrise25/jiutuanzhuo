@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { registerJoinWebMcpTools } from "@/lib/join-tools";
+import { I18nProvider, LanguageToggle } from "@/lib/i18n";
 
 function NotFoundComponent() {
   return (
