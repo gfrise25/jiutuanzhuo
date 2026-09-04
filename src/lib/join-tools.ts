@@ -259,25 +259,28 @@ export function registerJoinWebMcpTools() {
     },
     {
       name: "get_table",
-      title: "這桌資訊",
+      title: "這桌資訊 Table info",
       description:
-        "只有在需要顯示菜單或桌況時才呼叫；代點下單不需要先呼叫此工具。回傳桌名、桌主、收單狀態、截止時間、tableId 與完整菜單。",
+        "需要顯示菜單或桌況時才呼叫；代點下單不需先呼叫。 | Returns table name, host, open/closed status, deadline, tableId and the full bilingual menu with TWD prices.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       execute: async () => {
         const [t, list] = await Promise.all([ensureTable(), ensureMenu()]);
-        if (!t.ok) return { ok: false, error: t.error };
+        if (!t.ok) return { ok: false, error: t.error, error_en: t.error };
         const closed = isClosed(t.table);
         return {
           ok: true,
           table_id: t.tableId,
           status: closed ? "closed" : "open",
           status_text: closed ? "已截止" : "收單中",
+          status_text_en: closed ? "Closed" : "Open for orders",
           deadline: t.table.deadline,
           pickup: t.table.pickup,
+          currency: "TWD",
           menu: menuPayload(list),
           user_content: { table_name: t.table.name, host_name: t.table.host_name },
         };
+
       },
     },
   ];
