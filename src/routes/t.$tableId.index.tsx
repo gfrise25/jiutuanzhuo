@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useAnonSession } from "@/hooks/useAnonSession";
 import { supabase } from "@/integrations/supabase/client";
 import { registerWebMcpTool, isWebMcpAvailable } from "@/lib/webmcp";
+import { useI18n } from "@/lib/i18n";
 import {
   closeTable,
   purgeTestOrders,
@@ -42,9 +43,13 @@ function seatStyle(i: number, total: number): React.CSSProperties {
   };
 }
 
-function itemsText(order: OrderRow, names: Map<number, string>) {
+function itemsText(
+  order: OrderRow,
+  names: Map<number, string>,
+  unknownLabel: (id: number) => string,
+) {
   const parts = (order.items ?? []).map(
-    (i) => `${names.get(i.item_id) ?? `未知品項 #${i.item_id}`} ×${i.qty}`,
+    (i) => `${names.get(i.item_id) ?? unknownLabel(i.item_id)} ×${i.qty}`,
   );
   return parts.join("、");
 }
@@ -53,6 +58,7 @@ function itemsText(order: OrderRow, names: Map<number, string>) {
 function TablePage() {
   const { tableId } = Route.useParams();
   const session = useAnonSession();
+  const { t } = useI18n();
   const ready = !!session.data;
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -472,14 +478,14 @@ function TablePage() {
     typeof window !== "undefined" ? `${window.location.origin}/t/${tableId}/join` : "";
 
   async function onClose() {
-    if (!window.confirm("確定要結單嗎？結單後就不能再加點。")) return;
+    if (!window.confirm(t("table.confirmClose"))) return;
     setClosing(true);
     try {
       await closeTable(tableId);
-      toast.success("已結單");
+      toast.success(t("table.closed.toast"));
       qc.invalidateQueries({ queryKey: ["table", tableId] });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "結單失敗");
+      toast.error(e instanceof Error ? e.message : t("table.close.err"));
     } finally {
       setClosing(false);
     }
@@ -489,10 +495,10 @@ function TablePage() {
     setReopening(true);
     try {
       const next = await reopenTable({ sourceTableId: tableId });
-      toast.success(`已開新桌：${next.name}`);
+      toast.success(t("table.reopen.ok", { name: next.name }));
       navigate({ to: "/t/$tableId", params: { tableId: next.id } });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "再開一桌失敗");
+      toast.error(e instanceof Error ? e.message : t("table.reopen.err"));
     } finally {
       setReopening(false);
     }
@@ -505,7 +511,7 @@ function TablePage() {
         <div className="phone">
           <div className="body">
             <p className="note">
-              {data.error instanceof Error ? data.error.message : "讀取這一桌失敗"}
+              {data.error instanceof Error ? data.error.message : t("table.loadErr")}
             </p>
           </div>
         </div>
@@ -521,17 +527,17 @@ function TablePage() {
     <section className="stage">
       <div className="phone">
         <div className="hd">
-          <div className="eyebrow">{info?.name ?? "揪團桌"}</div>
+          <div className="eyebrow">{info?.name ?? t("table.brand")}</div>
           <h1 className="serif">
-            {closed ? "這桌結單了" : `桌上現在有 ${people} 個人`}
+            {closed ? t("table.closedTitle") : t("table.openTitle", { n: people })}
           </h1>
           {info ? (
             <div style={{ marginTop: 8 }}>
               <span className={`state${closed ? " closed" : ""}`}>
                 {closed ? null : <i className="dot" />}
                 {closed
-                  ? "已結單 · 店家已收到"
-                  : `收單中 · ${formatDeadline(info.deadline)} 截止`}
+                  ? t("table.closedState")
+                  : t("table.openState", { deadline: formatDeadline(info.deadline) })}
               </span>
             </div>
           ) : null}
@@ -542,15 +548,15 @@ function TablePage() {
             <div className="kpi">
               <div>
                 <b>{people}</b>
-                <span>人</span>
+                <span>{t("table.people")}</span>
               </div>
               <div>
                 <b>{portions}</b>
-                <span>份</span>
+                <span>{t("table.portions")}</span>
               </div>
               <div>
                 <b>{twd(total)}</b>
-                <span>合計</span>
+                <span>{t("table.total")}</span>
               </div>
             </div>
           ) : (
@@ -583,31 +589,29 @@ function TablePage() {
               <div className={`row${flash.has(o.id) ? " new" : ""}`} key={o.id}>
                 <div className="name">
                   {o.person_name}
-                  {info && o.person_name === info.host_name ? "（桌主）" : ""}
-                  {o.via_agent ? <span className="tag">Agent 代點</span> : null}
+                  {info && o.person_name === info.host_name ? t("table.hostTag") : ""}
+                  {o.via_agent ? <span className="tag">{t("table.agentTag")}</span> : null}
                 </div>
                 <div className="amt">{twd(o.amount)}</div>
                 {!closed ? (
                   <div className="items">
-                    {itemsText(o, names)}
+                    {itemsText(o, names, (id) => t("table.unknownItem", { id }))}
                     {o.note ? ` · ${o.note}` : ""}
                   </div>
                 ) : null}
               </div>
             ))}
-            {orders.length === 0 ? <p className="note">還沒有人點餐。</p> : null}
+            {orders.length === 0 ? <p className="note">{t("table.empty")}</p> : null}
           </div>
 
 
 
           <div className="total">
-            <span>整桌合計</span>
+            <span>{t("table.grandTotal")}</span>
             <span>{twd(total)}</span>
           </div>
           <div className="count">
-            <span>
-              {people} 人 · {portions} 份
-            </span>
+            <span>{t("table.countLine", { people, portions })}</span>
             <span>{info?.pickup ?? ""}</span>
           </div>
 
@@ -617,9 +621,9 @@ function TablePage() {
               aria-expanded={mcpOpen}
               onClick={() => setMcpOpen((v) => !v)}
             >
-              <span>AI 代點說明（WebMCP）</span>
+              <span>{t("mcp.toggle")}</span>
               <span className="jt-mcp-state">
-                {mcpReady ? "已註冊工具" : "此瀏覽器未支援"}
+                {mcpReady ? t("mcp.ready") : t("mcp.unsupported")}
               </span>
             </button>
             {mcpOpen ? (
@@ -662,26 +666,26 @@ function TablePage() {
           </div>
 
           {!isHost && orders.length < people ? (
-            <p className="note">其他人的明細只有桌主看得到。</p>
+            <p className="note">{t("table.onlyHost")}</p>
           ) : null}
 
           {closed ? (
             <>
               <p className="note" style={{ marginTop: 14 }}>
-                各自把錢轉給桌主{info ? ` ${info.host_name}` : ""}。這頁可以截圖丟群組。
+                {t("table.payNote", { host: info ? ` ${info.host_name}` : "" })}
               </p>
               {isHost ? (
                 <>
                   <button className="btn chili" onClick={onReopen} disabled={reopening}>
-                    {reopening ? "開桌中…" : "沿用設定，再開一桌"}
+                    {reopening ? t("table.reopening") : t("table.reopen")}
                   </button>
                   <p className="note">
-                    這桌的紀錄會完整保留，新桌是另一筆資料，截止時間預設兩小時後。
+                    {t("table.reopenNote")}
                   </p>
                 </>
               ) : null}
               <Link to="/" className="btn soy" style={{ textDecoration: "none" }}>
-                從頭開一桌
+                {t("table.newTable")}
               </Link>
             </>
 
@@ -697,7 +701,7 @@ function TablePage() {
                     setTimeout(() => setCopied(false), 2000);
                   }}
                 >
-                  {copied ? "已複製" : "複製連結"}
+                  {copied ? t("table.copied") : t("table.copy")}
                 </button>
               </div>
               <Link
@@ -706,11 +710,11 @@ function TablePage() {
                 className="btn ghost"
                 style={{ textDecoration: "none" }}
               >
-                我也要點
+                {t("table.joinLink")}
               </Link>
               {isHost ? (
                 <button className="btn chili" onClick={onClose} disabled={closing}>
-                  {closing ? "結單中…" : "結單"}
+                  {closing ? t("table.closing") : t("table.close")}
                 </button>
               ) : null}
             </>
@@ -729,7 +733,7 @@ function TablePage() {
             </ul>
             {confirmBox.amount ? (
               <div className="total">
-                <span>金額</span>
+                <span>{t("confirm.amount")}</span>
                 <span>{confirmBox.amount}</span>
               </div>
             ) : null}
@@ -741,7 +745,7 @@ function TablePage() {
                   setConfirmBox(null);
                 }}
               >
-                取消
+                {t("confirm.cancel")}
               </button>
               <button
                 className="btn chili"
@@ -750,7 +754,7 @@ function TablePage() {
                   setConfirmBox(null);
                 }}
               >
-                確認
+                {t("confirm.ok")}
               </button>
             </div>
           </div>
