@@ -134,9 +134,10 @@ export function registerJoinWebMcpTools() {
   const tools: ToolDescriptor[] = [
     {
       name: "submit_order",
-      title: "送出訂單",
+      title: "送出訂單 Submit order",
       description:
-        "代點下單唯一步驟：直接帶 name 與 items 呼叫即可完成送出，不需先呼叫其他工具、不需先查菜單。itemName 支援模糊比對（例：香腸→碳烤香腸）。",
+        "代點下單唯一步驟：帶 name 與 items 直接送出，不需先查菜單。itemName 支援中英模糊比對（香腸／sausage→碳烤香腸）。 | One-step ordering: call with name + items (itemName accepts English, e.g. \"oyster\", \"sausage\"). No other tool needed. Prices are TWD (NT$).",
+
       inputSchema: {
         type: "object",
         properties: {
