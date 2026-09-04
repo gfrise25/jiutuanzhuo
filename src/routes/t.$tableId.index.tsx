@@ -8,7 +8,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { registerWebMcpTool, isWebMcpAvailable } from "@/lib/webmcp";
 import { useI18n } from "@/lib/i18n";
 import {
+  bilingualName,
   closeTable,
+  itemNameEn,
   purgeTestOrders,
   reopenTable,
   submitOrder,
@@ -48,9 +50,11 @@ function itemsText(
   names: Map<number, string>,
   unknownLabel: (id: number) => string,
 ) {
-  const parts = (order.items ?? []).map(
-    (i) => `${names.get(i.item_id) ?? unknownLabel(i.item_id)} ×${i.qty}`,
-  );
+  const parts = (order.items ?? []).map((i) => {
+    const zh = names.get(i.item_id);
+    const label = zh ? bilingualName(zh) : unknownLabel(i.item_id);
+    return `${label} ×${i.qty}`;
+  });
   return parts.join("、");
 }
 
