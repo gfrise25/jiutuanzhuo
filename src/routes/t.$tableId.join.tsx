@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { useAnonSession } from "@/hooks/useAnonSession";
 import {
+  bilingualName,
   fetchMenu,
   fetchTableOrders,
   formatDeadline,

@@ -9,6 +9,7 @@ import {
   fetchMenu,
   fetchTableOrders,
   isClosed,
+  itemNameEn,
   submitOrder,
   type MenuItem,
   type TableInfo,
